@@ -1,0 +1,27 @@
+# Frontend - Node/Vite
+school-frontend/node_modules/
+school-frontend/dist/
+
+# Backend - Maven/Java
+school-management/**/target/
+
+# Local Maven installation / downloaded archive
+school-management/apache-maven-3.9.6/
+school-management/maven.zip
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
