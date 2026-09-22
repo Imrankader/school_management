@@ -30,15 +30,18 @@ export const StudentsPage = () => {
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    rollNumber: '',
+    admNo: '',
+    name: '',
     className: 'Class 10',
     section: 'A',
-    dateOfBirth: '2010-01-01',
-    parentId: '',
-    contactNumber: '',
+    dob: '2010-01-01',
+    gender: 'Male',
+    fatherName: '',
+    motherName: '',
+    guardianName: '',
+    mobile: '',
     address: '',
+    bloodGroup: 'O+',
   });
 
   const { addToast } = useToast();
@@ -56,9 +59,8 @@ export const StudentsPage = () => {
       setFilteredStudents(
         students.filter(
           (s) =>
-            s.firstName?.toLowerCase().includes(q) ||
-            s.lastName?.toLowerCase().includes(q) ||
-            s.rollNumber?.toLowerCase().includes(q) ||
+            s.name?.toLowerCase().includes(q) ||
+            s.admissionNumber?.toLowerCase().includes(q) ||
             s.className?.toLowerCase().includes(q)
         )
       );
@@ -81,15 +83,7 @@ export const StudentsPage = () => {
       setLoading(true);
       const res = await studentService.getAllStudents();
       if (res.success && res.data) {
-        const mappedData = res.data.map(s => {
-          const names = (s.name || '').split(' ');
-          return {
-            ...s,
-            firstName: names[0] || '',
-            lastName: names.slice(1).join(' ') || '',
-            rollNumber: s.admissionNumber || ''
-          };
-        });
+        const mappedData = res.data;
         setStudents(mappedData);
         setFilteredStudents(mappedData);
       }
@@ -104,15 +98,18 @@ export const StudentsPage = () => {
     setEditingStudent(null);
     const defaultParentId = parents.length > 0 ? parents[0].id : '';
     setFormData({
-      firstName: '',
-      lastName: '',
-      rollNumber: `RN-${Math.floor(1000 + Math.random() * 9000)}`,
+      admNo: `RN-${Math.floor(1000 + Math.random() * 9000)}`,
+      name: '',
       className: 'Class 10',
       section: 'A',
-      dateOfBirth: '2010-01-01',
-      parentId: defaultParentId,
-      contactNumber: '+1 555-0199',
-      address: '123 Main St, Springfield',
+      dob: '2010-01-01',
+      gender: 'Male',
+      fatherName: '',
+      motherName: '',
+      guardianName: '',
+      mobile: '',
+      address: '',
+      bloodGroup: 'O+',
     });
     setIsModalOpen(true);
   };
@@ -120,15 +117,18 @@ export const StudentsPage = () => {
   const handleOpenEdit = (student) => {
     setEditingStudent(student);
     setFormData({
-      firstName: student.firstName,
-      lastName: student.lastName,
-      rollNumber: student.rollNumber,
-      className: student.className,
-      section: student.section,
-      dateOfBirth: student.dateOfBirth,
-      parentId: student.parentId || '',
-      contactNumber: student.contactNumber || '',
+      admNo: student.admissionNumber || '',
+      name: student.name || '',
+      className: student.className || '',
+      section: student.section || '',
+      dob: student.dateOfBirth || '',
+      gender: student.gender || 'Male',
+      fatherName: student.fatherName || '',
+      motherName: student.motherName || '',
+      guardianName: student.guardianName || '',
+      mobile: student.contactNumber || '',
       address: student.address || '',
+      bloodGroup: student.bloodGroup || 'O+',
     });
     setIsModalOpen(true);
   };
@@ -146,20 +146,27 @@ export const StudentsPage = () => {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.parentId) {
-      addToast('Please select a parent for the student', 'error');
+
+    if (!formData.fatherName.trim() && !formData.motherName.trim() && !formData.guardianName.trim()) {
+      addToast('Please provide at least one Father Name, Mother Name, or Guardian Name.', 'error');
       return;
     }
+
     try {
       const payload = {
-        name: `${formData.firstName} ${formData.lastName}`.trim(),
-        admissionNumber: formData.rollNumber,
+        admissionNumber: formData.admNo,
+        name: formData.name.trim(),
         className: formData.className,
         section: formData.section,
-        dateOfBirth: formData.dateOfBirth,
-        parentId: parseInt(formData.parentId),
-        contactNumber: formData.contactNumber,
-        address: formData.address
+        dateOfBirth: formData.dob,
+        gender: formData.gender,
+        fatherName: formData.fatherName,
+        motherName: formData.motherName,
+        guardianName: formData.guardianName,
+        contactNumber: formData.mobile,
+        address: formData.address,
+        bloodGroup: formData.bloodGroup,
+        parentId: null
       };
 
       if (editingStudent) {
@@ -167,12 +174,12 @@ export const StudentsPage = () => {
         addToast('Student updated successfully!', 'success');
       } else {
         await studentService.createStudent(payload);
-        addToast('Student enrolled successfully!', 'success');
+        addToast('Student added successfully!', 'success');
       }
       setIsModalOpen(false);
       loadStudents();
     } catch (err) {
-      addToast(err.response?.data?.message || 'Operation failed', 'error');
+      addToast(err.response?.data?.message || 'Failed to add student', 'error');
     }
   };
 
@@ -203,7 +210,7 @@ export const StudentsPage = () => {
             <Upload size={18} /> Bulk Upload Students
           </button>
           <button onClick={handleOpenAdd} className="btn btn-primary">
-            <Plus size={18} /> Enroll New Student
+            <Plus size={18} /> Add Student
           </button>
         </div>
       </div>
@@ -231,11 +238,11 @@ export const StudentsPage = () => {
         <table className="table">
           <thead>
             <tr>
-              <th>Roll Number</th>
-              <th>Student Name</th>
+              <th>Adm No</th>
+              <th>Name</th>
               <th>Class & Section</th>
-              <th>Contact Number</th>
-              <th>Parent / Guardian</th>
+              <th>Mobile</th>
+              <th>Parents</th>
               <th>Address</th>
               <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
@@ -250,19 +257,21 @@ export const StudentsPage = () => {
             ) : (
               filteredStudents.map((s) => (
                 <tr key={s.id}>
-                  <td><strong>{s.rollNumber}</strong></td>
+                  <td><strong>{s.admissionNumber}</strong></td>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{s.firstName} {s.lastName}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>DOB: {s.dateOfBirth}</div>
+                    <div style={{ fontWeight: 600 }}>{s.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>DOB: {s.dateOfBirth} {s.gender ? `| ${s.gender}` : ''}</div>
                   </td>
                   <td>
                     <span className="badge badge-primary">{s.className} - {s.section}</span>
                   </td>
                   <td>{s.contactNumber || '—'}</td>
                   <td>
-                    <span className="badge badge-outline" style={{ border: '1px solid var(--border-subtle)' }}>
-                      {getParentLabel(s.parentId)}
-                    </span>
+                    <div style={{ fontSize: '0.85rem' }}>
+                      {s.fatherName && <div>F: {s.fatherName}</div>}
+                      {s.motherName && <div>M: {s.motherName}</div>}
+                      {s.guardianName && <div>G: {s.guardianName}</div>}
+                    </div>
                   </td>
                   <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.address || '—'}
@@ -296,14 +305,14 @@ export const StudentsPage = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingStudent ? 'Edit Student Profile' : 'Enroll New Student'}
+        title={editingStudent ? 'Edit Student Profile' : 'Add Student'}
         footer={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
               Cancel
             </button>
             <button type="submit" form="studentForm" className="btn btn-primary">
-              {editingStudent ? 'Save Changes' : 'Enroll Student'}
+              {editingStudent ? 'Save Changes' : 'Add Student'}
             </button>
           </>
         }
@@ -311,111 +320,163 @@ export const StudentsPage = () => {
         <form id="studentForm" onSubmit={handleFormSubmit}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">First Name</label>
-              <input
-                type="text"
-                className="form-input"
-                required
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-              />
+              <label className="form-label">S.No</label>
+              <input type="text" className="form-input" disabled value="Auto-generated" />
             </div>
             <div className="form-group">
-              <label className="form-label">Last Name</label>
+              <label className="form-label">Adm No</label>
               <input
                 type="text"
                 className="form-input"
                 required
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                value={formData.admNo}
+                onChange={(e) => setFormData({ ...formData, admNo: e.target.value })}
               />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Roll / Admission Number</label>
+              <label className="form-label">Name</label>
               <input
                 type="text"
                 className="form-input"
                 required
-                value={formData.rollNumber}
-                onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value })}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Parent / Guardian</label>
-              <select
-                className="form-input"
-                required
-                value={formData.parentId}
-                onChange={(e) => setFormData({ ...formData, parentId: e.target.value })}
-              >
-                <option value="">-- Select Parent --</option>
-                {parents.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.email}) - ID #{p.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="form-group">
-              <label className="form-label">Class Name</label>
+              <label className="form-label">Class</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. Class 10"
                 required
                 value={formData.className}
                 onChange={(e) => setFormData({ ...formData, className: e.target.value })}
               />
             </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Section</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. A"
                 required
                 value={formData.section}
                 onChange={(e) => setFormData({ ...formData, section: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">DOB</label>
+              <input
+                type="date"
+                className="form-input"
+                required
+                value={formData.dob}
+                onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
               />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Date of Birth</label>
-              <input
-                type="date"
+              <label className="form-label">Gender</label>
+              <select
                 className="form-input"
                 required
-                value={formData.dateOfBirth}
-                onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-              />
+                value={formData.gender}
+                onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
+          </div>
+
+          <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
+          
+          <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)' }}>
+            Parent / Guardian Information
+          </h3>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Contact Number</label>
+              <label className="form-label">Father Name</label>
               <input
                 type="text"
                 className="form-input"
-                value={formData.contactNumber}
-                onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                value={formData.fatherName}
+                onChange={(e) => setFormData({ ...formData, fatherName: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Mother Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={formData.motherName}
+                onChange={(e) => setFormData({ ...formData, motherName: e.target.value })}
               />
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Residential Address</label>
+            <label className="form-label">Guardian Name</label>
             <input
               type="text"
               className="form-input"
+              value={formData.guardianName}
+              onChange={(e) => setFormData({ ...formData, guardianName: e.target.value })}
+            />
+          </div>
+
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', fontStyle: 'italic' }}>
+            At least one parent or guardian name is required.
+          </p>
+
+          <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
+
+          <div className="form-group">
+            <label className="form-label">Mobile</label>
+            <input
+              type="text"
+              className="form-input"
+              value={formData.mobile}
+              onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Address</label>
+            <textarea
+              className="form-input"
+              rows="2"
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
             />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Blood Group</label>
+            <select
+              className="form-input"
+              value={formData.bloodGroup}
+              onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
+            >
+              <option value="">-- Select Blood Group --</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+            </select>
           </div>
         </form>
       </Modal>

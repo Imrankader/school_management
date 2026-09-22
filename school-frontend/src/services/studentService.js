@@ -32,7 +32,11 @@ export const studentService = {
   },
 
   importExcel: async (formData) => {
-    const response = await api.post('/api/students/import', formData);
+    const response = await api.post('/api/students/import', formData, {
+      headers: {
+        'Content-Type': undefined,
+      },
+    });
     return response.data;
   },
 
@@ -51,7 +55,11 @@ export const studentService = {
   },
 
   bulkUpload: async (formData) => {
-    const response = await api.post('/api/students/bulk-upload', formData);
+    const response = await api.post('/api/students/bulk-upload', formData, {
+      headers: {
+        'Content-Type': undefined,
+      },
+    });
     return response.data;
   }
 };

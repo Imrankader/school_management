@@ -40,6 +40,8 @@ public class StudentDTO {
 
     private String motherName;
 
+    private String guardianName;
+
     private String contactNumber;
 
     private String address;

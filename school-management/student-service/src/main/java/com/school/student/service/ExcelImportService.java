@@ -94,6 +94,7 @@ public class ExcelImportService {
                     "Gender",
                     "Father Name",
                     "Mother Name",
+                    "Guardian Name",
                     "Mobile",
                     "Address",
                     "Blood Group"
@@ -141,13 +142,14 @@ public class ExcelImportService {
                     "1. Fill one student record per row starting from row 2 in the 'Student Import Template' sheet.",
                     "2. Do not delete, reorder, or rename the column headers in the template.",
                     "3. Admission Number (Adm No) is a unique identifier. Every student in the file and database must have a unique Adm No.",
-                    "4. Duplicate Student Rule: The system will detect and reject duplicate students whose Name + Father Name + Address + DOB match another row or existing record.",
+                    "4. Duplicate Student Rule: The system will detect and reject duplicate students whose Name + Father/Mother/Guardian Name + Address + DOB match another row or existing record.",
                     "5. Required Fields: 'Adm No', 'Name', and 'Class' are mandatory for every student.",
-                    "6. Accepted Date of Birth formats: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, or native Excel date.",
-                    "7. Mobile Number should contain a valid contact number (7 to 15 digits).",
-                    "8. Supported File Types: .xlsx or .xls.",
-                    "9. ATOMIC IMPORT: If any row has a validation error or duplicate, ZERO students will be added. An error report will be provided.",
-                    "10. After reviewing and correcting issues in the error report, upload the fixed file again."
+                    "6. At least one of Father Name, Mother Name, or Guardian Name must be provided. They are all individually optional.",
+                    "7. Accepted Date of Birth formats: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, or native Excel date.",
+                    "8. Mobile Number should contain a valid contact number (7 to 15 digits).",
+                    "9. Supported File Types: .xlsx or .xls.",
+                    "10. ATOMIC IMPORT: If any row has a validation error or duplicate, ZERO students will be added. An error report will be provided.",
+                    "11. After reviewing and correcting issues in the error report, upload the fixed file again."
             };
 
             CellStyle instStyle = workbook.createCellStyle();
@@ -282,6 +284,7 @@ public class ExcelImportService {
                 String gender = getCellString(row, colMap, "gender");
                 String fatherName = getCellString(row, colMap, "father name", "fathername", "father");
                 String motherName = getCellString(row, colMap, "mother name", "mothername", "mother");
+                String guardianName = getCellString(row, colMap, "guardian name", "guardianname", "guardian");
                 String mobile = getCellString(row, colMap, "mobile", "mobile number", "contact number", "contact", "phone", "father mobile number");
                 String address = getCellString(row, colMap, "address", "residential address");
                 String bloodGroup = getCellString(row, colMap, "blood group", "bloodgroup", "blood");
@@ -298,13 +301,15 @@ public class ExcelImportService {
                 String normName = normalize(rawName);
                 String normClass = normalize(rawClass);
                 String normFather = normalize(fatherName);
+                String normMother = normalize(motherName);
+                String normGuardian = normalize(guardianName);
                 String normAddress = normalize(address);
                 String normDob = dob != null ? dob.toString() : (dobRaw != null ? normalize(dobRaw) : "");
 
                 ParsedStudentRow studentRow = new ParsedStudentRow(
                         excelRow, sNo, rawAdmNo, normAdmNo, rawName, normName,
                         rawClass, normClass, section, dob, normDob, gender,
-                        fatherName, normFather, motherName, mobile, address, normAddress, bloodGroup
+                        fatherName, normFather, motherName, normMother, guardianName, normGuardian, mobile, address, normAddress, bloodGroup
                 );
                 parsedRows.add(studentRow);
 
@@ -342,6 +347,17 @@ public class ExcelImportService {
                             .build());
                 }
 
+                if (normFather.isEmpty() && normMother.isEmpty() && normGuardian.isEmpty()) {
+                    errors.add(BulkUploadError.builder()
+                            .row(excelRow)
+                            .studentName(rawName)
+                            .admissionNumber(rawAdmNo)
+                            .errorType("Missing Parent/Guardian")
+                            .errorMessage("At least one of Father Name, Mother Name, or Guardian Name is required.")
+                            .errorFields("Father Name, Mother Name, Guardian Name")
+                            .build());
+                }
+
                 // Mobile validation (if present)
                 if (mobile != null && !mobile.isBlank()) {
                     String cleanMobile = mobile.replaceAll("[\\s\\-+()]", "");
@@ -376,10 +392,12 @@ public class ExcelImportService {
                     }
                 }
 
-                // --- 3. In-File Duplicate Student Detection (Name + Parent Name + Address + DOB) ---
-                if (!normName.isEmpty() && (!normFather.isEmpty() || !normAddress.isEmpty() || !normDob.isEmpty())) {
+                // --- 3. In-File Duplicate Student Detection (Name + Father + Mother + Guardian + Address + DOB) ---
+                if (!normName.isEmpty() && (!normFather.isEmpty() || !normMother.isEmpty() || !normGuardian.isEmpty() || !normAddress.isEmpty() || !normDob.isEmpty())) {
                     String fingerprint = normName.toUpperCase() + "|"
                             + normFather.toUpperCase() + "|"
+                            + normMother.toUpperCase() + "|"
+                            + normGuardian.toUpperCase() + "|"
                             + normAddress.toUpperCase() + "|"
                             + normDob.toUpperCase();
 
@@ -447,19 +465,23 @@ public class ExcelImportService {
             for (Student s : allDbStudents) {
                 String dbName = normalize(s.getName()).toUpperCase();
                 String dbFather = normalize(s.getFatherName()).toUpperCase();
+                String dbMother = normalize(s.getMotherName()).toUpperCase();
+                String dbGuardian = normalize(s.getGuardianName()).toUpperCase();
                 String dbAddress = normalize(s.getAddress()).toUpperCase();
                 String dbDob = s.getDateOfBirth() != null ? s.getDateOfBirth().toString().toUpperCase() : "";
 
-                if (!dbName.isEmpty() && (!dbFather.isEmpty() || !dbAddress.isEmpty() || !dbDob.isEmpty())) {
-                    String fp = dbName + "|" + dbFather + "|" + dbAddress + "|" + dbDob;
+                if (!dbName.isEmpty() && (!dbFather.isEmpty() || !dbMother.isEmpty() || !dbGuardian.isEmpty() || !dbAddress.isEmpty() || !dbDob.isEmpty())) {
+                    String fp = dbName + "|" + dbFather + "|" + dbMother + "|" + dbGuardian + "|" + dbAddress + "|" + dbDob;
                     dbFingerprintMap.put(fp, s);
                 }
             }
 
             for (ParsedStudentRow pr : parsedRows) {
-                if (!pr.normName.isEmpty() && (!pr.normFather.isEmpty() || !pr.normAddress.isEmpty() || !pr.normDob.isEmpty())) {
+                if (!pr.normName.isEmpty() && (!pr.normFather.isEmpty() || !pr.normMother.isEmpty() || !pr.normGuardian.isEmpty() || !pr.normAddress.isEmpty() || !pr.normDob.isEmpty())) {
                     String fp = pr.normName.toUpperCase() + "|"
                             + pr.normFather.toUpperCase() + "|"
+                            + pr.normMother.toUpperCase() + "|"
+                            + pr.normGuardian.toUpperCase() + "|"
                             + pr.normAddress.toUpperCase() + "|"
                             + pr.normDob.toUpperCase();
 
@@ -470,8 +492,8 @@ public class ExcelImportService {
                                 .studentName(pr.rawName)
                                 .admissionNumber(pr.rawAdmNo)
                                 .errorType("Database Duplicate Student")
-                                .errorMessage("Student details match an existing student in the database (Adm No: " + matched.getAdmissionNumber() + ") based on Name, Parent Name, Address, and DOB.")
-                                .errorFields("Name, Father Name, Address, DOB")
+                                .errorMessage("Student details match an existing student in the database (Adm No: " + matched.getAdmissionNumber() + ") based on Name, Father/Mother/Guardian Name, Address, and DOB.")
+                                .errorFields("Name, Father Name, Mother Name, Guardian Name, Address, DOB")
                                 .build());
                     }
                 }
@@ -495,6 +517,7 @@ public class ExcelImportService {
                         .gender(pr.gender != null ? pr.gender.trim() : null)
                         .fatherName(pr.fatherName != null ? pr.fatherName.trim() : null)
                         .motherName(pr.motherName != null ? pr.motherName.trim() : null)
+                        .guardianName(pr.guardianName != null ? pr.guardianName.trim() : null)
                         .contactNumber(pr.mobile != null ? pr.mobile.trim() : null)
                         .address(pr.address != null ? pr.address.trim() : null)
                         .bloodGroup(pr.bloodGroup != null ? pr.bloodGroup.trim() : null)
@@ -892,6 +915,9 @@ public class ExcelImportService {
         public String fatherName;
         public String normFather;
         public String motherName;
+        public String normMother;
+        public String guardianName;
+        public String normGuardian;
         public String mobile;
         public String address;
         public String normAddress;

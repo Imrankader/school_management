@@ -41,6 +41,8 @@ public class Student {
 
     private String motherName;
 
+    private String guardianName;
+
     private String contactNumber;
 
     private String address;

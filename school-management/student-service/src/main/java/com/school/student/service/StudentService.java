@@ -40,8 +40,17 @@ public class StudentService {
     }
 
     public StudentDTO createStudent(StudentDTO dto) {
+        if ((dto.getFatherName() == null || dto.getFatherName().isBlank()) &&
+            (dto.getMotherName() == null || dto.getMotherName().isBlank()) &&
+            (dto.getGuardianName() == null || dto.getGuardianName().isBlank())) {
+            throw new BadRequestException("Please provide at least one Father Name, Mother Name, or Guardian Name.");
+        }
+
         if (studentRepository.existsByAdmissionNumber(dto.getAdmissionNumber())) {
             throw new BadRequestException("Admission number already exists: " + dto.getAdmissionNumber());
+        }
+        if (studentRepository.isDuplicateStudent(dto.getName(), dto.getFatherName(), dto.getMotherName(), dto.getGuardianName(), dto.getAddress(), dto.getDateOfBirth())) {
+            throw new BadRequestException("A student with the same Name, Father Name, Address and DOB already exists.");
         }
         Student student = toEntity(dto);
         Student saved = studentRepository.save(student);
@@ -50,8 +59,18 @@ public class StudentService {
     }
 
     public StudentDTO updateStudent(Long id, StudentDTO dto) {
+        if ((dto.getFatherName() == null || dto.getFatherName().isBlank()) &&
+            (dto.getMotherName() == null || dto.getMotherName().isBlank()) &&
+            (dto.getGuardianName() == null || dto.getGuardianName().isBlank())) {
+            throw new BadRequestException("Please provide at least one Father Name, Mother Name, or Guardian Name.");
+        }
+
         Student existing = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", "id", id));
+
+        if (studentRepository.isDuplicateStudentExcludingId(id, dto.getName(), dto.getFatherName(), dto.getMotherName(), dto.getGuardianName(), dto.getAddress(), dto.getDateOfBirth())) {
+            throw new BadRequestException("A student with the same Name, Father Name, Address and DOB already exists.");
+        }
 
         existing.setName(dto.getName());
         existing.setDateOfBirth(dto.getDateOfBirth());
@@ -61,6 +80,7 @@ public class StudentService {
         existing.setSection(dto.getSection());
         existing.setFatherName(dto.getFatherName());
         existing.setMotherName(dto.getMotherName());
+        existing.setGuardianName(dto.getGuardianName());
         existing.setContactNumber(dto.getContactNumber());
         existing.setAddress(dto.getAddress());
         existing.setBloodGroup(dto.getBloodGroup());
@@ -92,6 +112,7 @@ public class StudentService {
                 .section(student.getSection())
                 .fatherName(student.getFatherName())
                 .motherName(student.getMotherName())
+                .guardianName(student.getGuardianName())
                 .contactNumber(student.getContactNumber())
                 .address(student.getAddress())
                 .bloodGroup(student.getBloodGroup())
@@ -109,6 +130,7 @@ public class StudentService {
                 .section(dto.getSection())
                 .fatherName(dto.getFatherName())
                 .motherName(dto.getMotherName())
+                .guardianName(dto.getGuardianName())
                 .contactNumber(dto.getContactNumber())
                 .address(dto.getAddress())
                 .bloodGroup(dto.getBloodGroup())
