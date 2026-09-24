@@ -48,4 +48,17 @@ public class Student {
     private String address;
 
     private String bloodGroup;
+
+    @Column(name = "joining_date")
+    private LocalDate joiningDate;
+
+    @Column(name = "is_active", columnDefinition = "boolean default true")
+    @Builder.Default
+    private Boolean isActive = true;
+
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
+    @Column(name = "password_hash")
+    private String passwordHash;
 }

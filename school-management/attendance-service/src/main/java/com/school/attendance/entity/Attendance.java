@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import com.school.common.enums.PersonType;
 
 /**
  * Attendance record for a student on a specific date.
@@ -21,8 +22,12 @@ public class Attendance {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Long studentId;
+    private PersonType personType;
+
+    @Column(nullable = false)
+    private Long personId;
 
     @Column(nullable = false)
     private LocalDate date;

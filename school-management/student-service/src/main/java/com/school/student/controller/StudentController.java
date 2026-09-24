@@ -35,9 +35,52 @@ public class StudentController {
 
     /** GET /api/students */
     @GetMapping
-    public ResponseEntity<ApiResponse<List<StudentDTO>>> getAllStudents() {
-        List<StudentDTO> students = studentService.getAllStudents();
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> searchStudents(
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "status", required = false, defaultValue = "All") String status,
+            @RequestParam(value = "page", defaultValue = "1") int page, // UI is 1-based, Spring Data is 0-based
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
+        
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, pageSize, org.springframework.data.domain.Sort.by("id").descending());
+        org.springframework.data.domain.Page<StudentDTO> studentPage = studentService.searchStudents(search, status, pageable);
+
+        java.util.Map<String, Object> responseData = new java.util.HashMap<>();
+        responseData.put("data", studentPage.getContent());
+        
+        java.util.Map<String, Object> pagination = new java.util.HashMap<>();
+        pagination.put("page", page);
+        pagination.put("pageSize", pageSize);
+        pagination.put("total", studentPage.getTotalElements());
+        pagination.put("totalPages", studentPage.getTotalPages());
+        responseData.put("pagination", pagination);
+        
+        // Counts
+        responseData.put("totalStudents", studentService.countTotalStudents());
+        responseData.put("activeStudents", studentService.countActiveStudents());
+        responseData.put("inactiveStudents", studentService.countInactiveStudents());
+
+        return ResponseEntity.ok(ApiResponse.success(responseData));
+    }
+
+    /** GET /api/students/classes — Distinct classes existing in Student Directory */
+    @GetMapping("/classes")
+    public ResponseEntity<ApiResponse<List<String>>> getDistinctClasses() {
+        List<String> classes = studentService.getDistinctClasses();
+        return ResponseEntity.ok(ApiResponse.success(classes));
+    }
+
+    /** GET /api/students/class/{className}/active — Active students in a class */
+    @GetMapping("/class/{className}/active")
+    public ResponseEntity<ApiResponse<List<StudentDTO>>> getActiveStudentsByClass(
+            @PathVariable("className") String className) {
+        List<StudentDTO> students = studentService.getActiveStudentsByClass(className);
         return ResponseEntity.ok(ApiResponse.success(students));
+    }
+
+    /** GET /api/students/active-by-class — All active students grouped by class */
+    @GetMapping("/active-by-class")
+    public ResponseEntity<ApiResponse<java.util.Map<String, List<StudentDTO>>>> getActiveStudentsGroupedByClass() {
+        return ResponseEntity.ok(ApiResponse.success(studentService.getActiveStudentsGroupedByClass()));
     }
 
     /** GET /api/students/{id} */
@@ -95,6 +138,16 @@ public class StudentController {
     public ResponseEntity<ApiResponse<Void>> deleteStudent(@PathVariable("id") Long id) {
         studentService.deleteStudent(id);
         return ResponseEntity.ok(ApiResponse.success("Student deleted successfully", null));
+    }
+
+    /** PATCH /api/students/{id}/status */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ApiResponse<StudentDTO>> updateStudentStatus(@PathVariable("id") Long id,
+                                                                       @RequestBody java.util.Map<String, String> statusUpdate) {
+        String status = statusUpdate.get("status");
+        boolean isActive = "ACTIVE".equalsIgnoreCase(status);
+        StudentDTO updated = studentService.updateStudentStatus(id, isActive);
+        return ResponseEntity.ok(ApiResponse.success("Student status updated successfully", updated));
     }
 
     /**

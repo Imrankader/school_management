@@ -14,6 +14,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { StudentsPage } from './pages/admin/StudentsPage';
 import { ParentsPage } from './pages/admin/ParentsPage';
 import { AcademicsPage } from './pages/admin/AcademicsPage';
+import { AttendancePage } from './pages/admin/AttendancePage';
 import { FeesPage } from './pages/admin/FeesPage';
 import { HomeworkPage } from './pages/admin/HomeworkPage';
 import { HolidayPage } from './pages/admin/HolidayPage';
@@ -64,7 +65,9 @@ export const App = () => {
                 <Route path="students" element={<StudentsPage />} />
                 <Route path="parents" element={<ParentsPage />} />
                 <Route path="academics" element={<AcademicsPage />} />
+                <Route path="attendance" element={<AttendancePage />} />
                 <Route path="fees" element={<FeesPage />} />
+                <Route path="billing" element={<FeesPage />} />
                 <Route path="homework" element={<HomeworkPage />} />
                 <Route path="holidays" element={<HolidayPage />} />
                 <Route path="leave" element={<LeaveRequestsPage />} />

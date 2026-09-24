@@ -9,10 +9,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
+import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -85,7 +87,6 @@ public class ExcelImportService {
             dateStyle.setBorderRight(BorderStyle.THIN);
 
             String[] headers = {
-                    "S.No",
                     "Adm No",
                     "Name",
                     "Class",
@@ -97,7 +98,11 @@ public class ExcelImportService {
                     "Guardian Name",
                     "Mobile",
                     "Address",
-                    "Blood Group"
+                    "Blood Group",
+                    "Joining Date",
+                    "Active Student",
+                    "Phone Number",
+                    "Password"
             };
 
             Row headerRow = dataSheet.createRow(0);
@@ -113,6 +118,52 @@ public class ExcelImportService {
 
             // Freeze header row
             dataSheet.createFreezePane(0, 1);
+
+            // Add Data Validations
+            DataValidationHelper validationHelper = dataSheet.getDataValidationHelper();
+            
+            // Gender Dropdown (Col 5)
+            DataValidationConstraint genderConstraint = validationHelper.createExplicitListConstraint(new String[]{"Male", "Female", "Other"});
+            CellRangeAddressList genderRange = new CellRangeAddressList(1, 1048575, 5, 5);
+            DataValidation genderValidation = validationHelper.createValidation(genderConstraint, genderRange);
+            genderValidation.setShowErrorBox(true);
+            dataSheet.addValidationData(genderValidation);
+
+            // Blood Group Dropdown (Col 11)
+            DataValidationConstraint bgConstraint = validationHelper.createExplicitListConstraint(new String[]{"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"});
+            CellRangeAddressList bgRange = new CellRangeAddressList(1, 1048575, 11, 11);
+            DataValidation bgValidation = validationHelper.createValidation(bgConstraint, bgRange);
+            bgValidation.setShowErrorBox(true);
+            dataSheet.addValidationData(bgValidation);
+
+            // Active Student Dropdown (Col 13)
+            DataValidationConstraint statusConstraint = validationHelper.createExplicitListConstraint(new String[]{"Active", "Inactive"});
+            CellRangeAddressList statusRange = new CellRangeAddressList(1, 1048575, 13, 13);
+            DataValidation statusValidation = validationHelper.createValidation(statusConstraint, statusRange);
+            statusValidation.setShowErrorBox(true);
+            dataSheet.addValidationData(statusValidation);
+
+            // Date validation for DOB (Col 4) and Joining Date (Col 12)
+            DataValidationConstraint dateConstraint = validationHelper.createDateConstraint(
+                    DataValidationConstraint.OperatorType.BETWEEN,
+                    "Date(1900, 1, 1)", "Date(2099, 12, 31)", "yyyy-mm-dd"
+            );
+            
+            CellRangeAddressList dobRange = new CellRangeAddressList(1, 1048575, 4, 4);
+            DataValidation dobValidation = validationHelper.createValidation(dateConstraint, dobRange);
+            dobValidation.setShowErrorBox(true);
+            dobValidation.createErrorBox("Invalid Date", "Please enter a valid date in DD-MM-YYYY format.");
+            dobValidation.setShowPromptBox(true);
+            dobValidation.createPromptBox("Date Format", "Enter date in DD-MM-YYYY format.");
+            dataSheet.addValidationData(dobValidation);
+
+            CellRangeAddressList joiningDateRange = new CellRangeAddressList(1, 1048575, 12, 12);
+            DataValidation joiningDateValidation = validationHelper.createValidation(dateConstraint, joiningDateRange);
+            joiningDateValidation.setShowErrorBox(true);
+            joiningDateValidation.createErrorBox("Invalid Date", "Please enter a valid date in DD-MM-YYYY format.");
+            joiningDateValidation.setShowPromptBox(true);
+            joiningDateValidation.createPromptBox("Date Format", "Enter joining date in DD-MM-YYYY format.");
+            dataSheet.addValidationData(joiningDateValidation);
 
             // Auto filter
             dataSheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.length - 1));
@@ -140,16 +191,18 @@ public class ExcelImportService {
 
             String[] instructions = {
                     "1. Fill one student record per row starting from row 2 in the 'Student Import Template' sheet.",
-                    "2. Do not delete, reorder, or rename the column headers in the template.",
-                    "3. Admission Number (Adm No) is a unique identifier. Every student in the file and database must have a unique Adm No.",
-                    "4. Duplicate Student Rule: The system will detect and reject duplicate students whose Name + Father/Mother/Guardian Name + Address + DOB match another row or existing record.",
-                    "5. Required Fields: 'Adm No', 'Name', and 'Class' are mandatory for every student.",
-                    "6. At least one of Father Name, Mother Name, or Guardian Name must be provided. They are all individually optional.",
-                    "7. Accepted Date of Birth formats: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, or native Excel date.",
-                    "8. Mobile Number should contain a valid contact number (7 to 15 digits).",
-                    "9. Supported File Types: .xlsx or .xls.",
-                    "10. ATOMIC IMPORT: If any row has a validation error or duplicate, ZERO students will be added. An error report will be provided.",
-                    "11. After reviewing and correcting issues in the error report, upload the fixed file again."
+                    "2. S.No is automatically generated by the system. Admin does NOT need to enter S.No.",
+                    "3. Admission Number (Adm No) is a required unique identifier.",
+                    "4. Required Fields: 'Adm No', 'Name', and 'Class' are mandatory for every student.",
+                    "5. At least one of Father Name, Mother Name, or Guardian Name must be provided.",
+                    "6. DOB format: Enter date only (DD-MM-YYYY).",
+                    "7. Mobile Number should contain a valid contact number (7 to 15 digits).",
+                    "8. Joining Date format: Enter date only (DD-MM-YYYY).",
+                    "9. Active Student: Select either 'Active' or 'Inactive'.",
+                    "10. Phone Number: Parent/student portal login phone number.",
+                    "11. Password: Initial portal password. Do not share passwords unnecessarily.",
+                    "12. Duplicate Student Rule: The system will detect and reject duplicate students.",
+                    "13. ATOMIC IMPORT: If any row has a validation error or duplicate, ZERO students will be added."
             };
 
             CellStyle instStyle = workbook.createCellStyle();
@@ -288,12 +341,16 @@ public class ExcelImportService {
                 String mobile = getCellString(row, colMap, "mobile", "mobile number", "contact number", "contact", "phone", "father mobile number");
                 String address = getCellString(row, colMap, "address", "residential address");
                 String bloodGroup = getCellString(row, colMap, "blood group", "bloodgroup", "blood");
+                String joiningDateRaw = getCellString(row, colMap, "joining date", "joiningdate", "date of joining");
+                String isActiveRaw = getCellString(row, colMap, "active student", "active", "is active", "status");
+                String phoneNumber = getCellString(row, colMap, "phone number", "phone", "portal phone");
+                String password = getCellString(row, colMap, "password", "portal password");
 
                 // Parse Date of Birth
                 LocalDate dob = null;
                 String dobRaw = getCellString(row, colMap, "dob", "date of birth", "dateofbirth", "birth date");
                 if (dobRaw != null && !dobRaw.isBlank()) {
-                    dob = parseDobValue(row, colMap, excelRow, dobRaw, errors, rawName, rawAdmNo);
+                    dob = parseDateValue(row, colMap, excelRow, dobRaw, errors, rawName, rawAdmNo, "DOB", "dob", "date of birth", "dateofbirth", "birth date");
                 }
 
                 // Normalization
@@ -306,11 +363,56 @@ public class ExcelImportService {
                 String normAddress = normalize(address);
                 String normDob = dob != null ? dob.toString() : (dobRaw != null ? normalize(dobRaw) : "");
 
-                ParsedStudentRow studentRow = new ParsedStudentRow(
-                        excelRow, sNo, rawAdmNo, normAdmNo, rawName, normName,
-                        rawClass, normClass, section, dob, normDob, gender,
-                        fatherName, normFather, motherName, normMother, guardianName, normGuardian, mobile, address, normAddress, bloodGroup
-                );
+                ParsedStudentRow studentRow = new ParsedStudentRow();
+                studentRow.excelRow = excelRow;
+                studentRow.sNo = sNo;
+                studentRow.rawAdmNo = rawAdmNo;
+                studentRow.normAdmNo = normAdmNo;
+                studentRow.rawName = rawName;
+                studentRow.normName = normName;
+                studentRow.rawClass = rawClass;
+                studentRow.normClass = normClass;
+                studentRow.section = section;
+                studentRow.dob = dob;
+                studentRow.normDob = normDob;
+                studentRow.gender = gender;
+                studentRow.fatherName = fatherName;
+                studentRow.normFather = normFather;
+                studentRow.motherName = motherName;
+                studentRow.normMother = normMother;
+                studentRow.guardianName = guardianName;
+                studentRow.normGuardian = normGuardian;
+                studentRow.mobile = mobile;
+                studentRow.address = address;
+                studentRow.normAddress = normAddress;
+                studentRow.bloodGroup = bloodGroup;
+                studentRow.phoneNumber = phoneNumber;
+                studentRow.password = password;
+
+                if (joiningDateRaw != null && !joiningDateRaw.isBlank()) {
+                    studentRow.joiningDate = parseDateValue(row, colMap, excelRow, joiningDateRaw, errors, rawName, rawAdmNo, "Joining Date", "joining date", "joiningdate", "date of joining");
+                }
+                
+                if (isActiveRaw != null && !isActiveRaw.isBlank()) {
+                    if (isActiveRaw.equalsIgnoreCase("Active")) {
+                        studentRow.isActive = true;
+                    } else if (isActiveRaw.equalsIgnoreCase("Inactive")) {
+                        studentRow.isActive = false;
+                    } else {
+                        studentRow.isActive = true;
+                        errors.add(BulkUploadError.builder()
+                                .row(excelRow)
+                                .studentName(rawName)
+                                .admissionNumber(rawAdmNo)
+                                .errorType("Invalid Student Status")
+                                .errorMessage("Active Student must be either \"Active\" or \"Inactive\".")
+                                .errorFields("Active Student")
+                                .build());
+                    }
+                } else {
+                    studentRow.isActive = true;
+                }
+
                 parsedRows.add(studentRow);
 
                 // --- 1. Required Field Validations ---
@@ -505,7 +607,7 @@ public class ExcelImportService {
                 return buildFailureResult(errors, parsedRows);
             }
 
-            // NO errors: Transactional Insert of ALL rows
+            BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
             List<Student> studentsToSave = new ArrayList<>();
             for (ParsedStudentRow pr : parsedRows) {
                 Student s = Student.builder()
@@ -521,6 +623,10 @@ public class ExcelImportService {
                         .contactNumber(pr.mobile != null ? pr.mobile.trim() : null)
                         .address(pr.address != null ? pr.address.trim() : null)
                         .bloodGroup(pr.bloodGroup != null ? pr.bloodGroup.trim() : null)
+                        .joiningDate(pr.joiningDate)
+                        .isActive(pr.isActive != null ? pr.isActive : true)
+                        .phoneNumber(pr.phoneNumber != null ? pr.phoneNumber.trim() : null)
+                        .passwordHash((pr.password != null && !pr.password.isBlank()) ? passwordEncoder.encode(pr.password.trim()) : null)
                         .build();
                 studentsToSave.add(s);
             }
@@ -854,10 +960,10 @@ public class ExcelImportService {
         return null;
     }
 
-    private LocalDate parseDobValue(Row row, Map<String, Integer> colMap, int rowNum, String raw,
-                                    List<BulkUploadError> errors, String studentName, String admNo) {
+    private LocalDate parseDateValue(Row row, Map<String, Integer> colMap, int rowNum, String raw,
+                                    List<BulkUploadError> errors, String studentName, String admNo, String fieldName, String... possibleKeys) {
         // Handle numeric date cell from Excel
-        for (String key : new String[]{"dob", "date of birth", "dateofbirth", "birth date"}) {
+        for (String key : possibleKeys) {
             String norm = key.toLowerCase().replaceAll("[._\\-\\s]+", " ");
             Integer idx = colMap.get(norm);
             if (idx != null) {
@@ -880,9 +986,9 @@ public class ExcelImportService {
                 .row(rowNum)
                 .studentName(studentName)
                 .admissionNumber(admNo)
-                .errorType("Invalid Date of Birth")
-                .errorMessage("Row " + rowNum + ": DOB \"" + raw + "\" is not a valid date. Accepted formats: YYYY-MM-DD, DD/MM/YYYY, DD.MM.YYYY.")
-                .errorFields("DOB")
+                .errorType("Invalid Date")
+                .errorMessage(fieldName + " must be a valid date in DD-MM-YYYY format.")
+                .errorFields(fieldName)
                 .build());
         return null;
     }
@@ -922,5 +1028,9 @@ public class ExcelImportService {
         public String address;
         public String normAddress;
         public String bloodGroup;
+        public LocalDate joiningDate;
+        public Boolean isActive;
+        public String phoneNumber;
+        public String password;
     }
 }

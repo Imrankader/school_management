@@ -47,4 +47,15 @@ public class StudentDTO {
     private String address;
 
     private String bloodGroup;
+
+    private LocalDate joiningDate;
+
+    @Builder.Default
+    private Boolean isActive = true;
+
+    private String phoneNumber;
+
+    // Write-only password, not returned to frontend
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+    private String password;
 }

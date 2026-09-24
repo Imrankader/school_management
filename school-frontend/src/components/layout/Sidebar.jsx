@@ -57,9 +57,13 @@ export const Sidebar = () => {
               <BookOpen size={19} />
               <span>Academics</span>
             </NavLink>
+            <NavLink to="/admin/attendance" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <CalendarCheck size={19} />
+              <span>Attendance</span>
+            </NavLink>
             <NavLink to="/admin/fees" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <DollarSign size={19} />
-              <span>Fees</span>
+              <span>Billing</span>
             </NavLink>
             <NavLink to="/admin/homework" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <ClipboardList size={19} />

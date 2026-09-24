@@ -4,7 +4,9 @@ import com.school.fee.entity.Fee;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Repository for Fee entity.
@@ -13,4 +15,12 @@ import java.util.List;
 public interface FeeRepository extends JpaRepository<Fee, Long> {
 
     List<Fee> findByStudentId(Long studentId);
+
+    Optional<Fee> findFirstByStudentId(Long studentId);
+
+    List<Fee> findByClassName(String className);
+
+    Optional<Fee> findByStudentIdAndClassName(Long studentId, String className);
+
+    List<Fee> findByStudentIdIn(Collection<Long> studentIds);
 }

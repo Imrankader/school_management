@@ -1,60 +1,36 @@
 package com.school.fee.dto;
 
-import com.school.common.enums.FeeStatus;
 import com.school.fee.entity.Payment;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 
 /**
- * DTO for Fee create/update and response.
+ * Detailed student billing row for the class-specific student billing table.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class FeeDTO {
-
-    private Long id;
-
-    @NotNull(message = "Student ID is required")
+public class StudentBillingRowDTO {
+    private Integer sNo;
     private Long studentId;
-
     private String admissionNumber;
-
     private String studentName;
-
     private String className;
-
     private BigDecimal termFees1;
-
     private BigDecimal termFees2;
-
     private BigDecimal termFees3;
-
     private BigDecimal busFees;
-
     private BigDecimal examFees;
-
-    private BigDecimal totalAmount;
-
+    private BigDecimal outstandingAmount;
     private BigDecimal paidAmount;
-
-    private BigDecimal pendingAmount;
-
-    private FeeStatus status;
-
-    private String description;
-
-    private String academicYear;
-
-    private LocalDate dueDate;
-
+    private BigDecimal totalAmount;
+    private String status; // "settled", "partially paid", "pending", "unbilled"
+    private Long feeId;
     private List<Payment> payments;
 }

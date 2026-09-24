@@ -10,6 +10,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /**
  * Business logic for Student management.
@@ -20,11 +24,52 @@ import java.util.List;
 public class StudentService {
 
     private final StudentRepository studentRepository;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    public Page<StudentDTO> searchStudents(String search, String status, Pageable pageable) {
+        Specification<Student> spec = Specification.where(null);
+        if (search != null && !search.isBlank()) {
+            String likeSearch = "%" + search.toLowerCase() + "%";
+            spec = spec.and((root, query, cb) -> cb.or(
+                cb.like(cb.lower(root.get("name")), likeSearch),
+                cb.like(cb.lower(root.get("admissionNumber")), likeSearch),
+                cb.like(cb.lower(root.get("className")), likeSearch)
+            ));
+        }
+        if ("active".equalsIgnoreCase(status)) {
+            spec = spec.and((root, query, cb) -> cb.isTrue(root.get("isActive")));
+        } else if ("inactive".equalsIgnoreCase(status)) {
+            spec = spec.and((root, query, cb) -> cb.isFalse(root.get("isActive")));
+        }
+        return studentRepository.findAll(spec, pageable).map(this::toDTO);
+    }
+
+    public long countTotalStudents() { return studentRepository.count(); }
+    public long countActiveStudents() { return studentRepository.countByIsActiveTrue(); }
+    public long countInactiveStudents() { return studentRepository.countByIsActiveFalse(); }
 
     public List<StudentDTO> getAllStudents() {
         return studentRepository.findAll().stream()
                 .map(this::toDTO)
                 .toList();
+    }
+
+    public List<StudentDTO> getActiveStudentsByClass(String className) {
+        return studentRepository.findByClassNameAndIsActiveTrue(className).stream()
+                .map(this::toDTO)
+                .sorted(java.util.Comparator.comparing(StudentDTO::getName, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    public List<String> getDistinctClasses() {
+        return studentRepository.findDistinctClassNames();
+    }
+
+    public java.util.Map<String, List<StudentDTO>> getActiveStudentsGroupedByClass() {
+        return studentRepository.findByIsActiveTrue().stream()
+                .filter(s -> s.getClassName() != null && !s.getClassName().isBlank())
+                .map(this::toDTO)
+                .collect(java.util.stream.Collectors.groupingBy(StudentDTO::getClassName));
     }
 
     public List<StudentDTO> getStudentsByParent(Long parentId) {
@@ -84,6 +129,12 @@ public class StudentService {
         existing.setContactNumber(dto.getContactNumber());
         existing.setAddress(dto.getAddress());
         existing.setBloodGroup(dto.getBloodGroup());
+        existing.setJoiningDate(dto.getJoiningDate());
+        existing.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : existing.getIsActive());
+        existing.setPhoneNumber(dto.getPhoneNumber());
+        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
+            existing.setPasswordHash(passwordEncoder.encode(dto.getPassword()));
+        }
 
         Student updated = studentRepository.save(existing);
         log.info("Updated student id: {}", id);
@@ -96,6 +147,15 @@ public class StudentService {
         }
         studentRepository.deleteById(id);
         log.info("Deleted student id: {}", id);
+    }
+
+    public StudentDTO updateStudentStatus(Long id, boolean isActive) {
+        Student existing = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", "id", id));
+        existing.setIsActive(isActive);
+        Student updated = studentRepository.save(existing);
+        log.info("Updated student id: {} to isActive={}", id, isActive);
+        return toDTO(updated);
     }
 
     // --- Mapping helpers ---
@@ -116,6 +176,9 @@ public class StudentService {
                 .contactNumber(student.getContactNumber())
                 .address(student.getAddress())
                 .bloodGroup(student.getBloodGroup())
+                .joiningDate(student.getJoiningDate())
+                .isActive(student.getIsActive())
+                .phoneNumber(student.getPhoneNumber())
                 .build();
     }
 
@@ -134,6 +197,10 @@ public class StudentService {
                 .contactNumber(dto.getContactNumber())
                 .address(dto.getAddress())
                 .bloodGroup(dto.getBloodGroup())
+                .joiningDate(dto.getJoiningDate())
+                .isActive(dto.getIsActive() != null ? dto.getIsActive() : true)
+                .phoneNumber(dto.getPhoneNumber())
+                .passwordHash(dto.getPassword() != null && !dto.getPassword().isBlank() ? passwordEncoder.encode(dto.getPassword()) : null)
                 .build();
     }
 }

@@ -7,15 +7,27 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+
 /**
  * Repository for Student entity.
  */
 @Repository
-public interface StudentRepository extends JpaRepository<Student, Long> {
+public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpecificationExecutor<Student> {
 
     Optional<Student> findByAdmissionNumber(String admissionNumber);
 
     List<Student> findByClassName(String className);
+
+    List<Student> findByClassNameAndIsActiveTrue(String className);
+
+    List<Student> findByIsActiveTrue();
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT s.className FROM Student s WHERE s.className IS NOT NULL ORDER BY s.className")
+    List<String> findDistinctClassNames();
 
     List<Student> findByParentId(Long parentId);
 
@@ -24,6 +36,10 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     boolean existsByAdmissionNumber(String admissionNumber);
 
     List<Student> findByNameIgnoreCase(String name);
+
+    long countByIsActiveTrue();
+    long countByIsActiveFalse();
+    // Present/Absent requires attendance repository or complex query, but I will mock it temporarily or implement it properly if attendance entity exists.
 
     default boolean isDuplicateStudent(String name, String fatherName, String motherName, String guardianName, String address, java.time.LocalDate dateOfBirth) {
         if (name == null) return false;

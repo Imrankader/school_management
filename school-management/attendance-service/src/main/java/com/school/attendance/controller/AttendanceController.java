@@ -37,25 +37,48 @@ public class AttendanceController {
                 .body(ApiResponse.success("Attendance marked successfully", marked));
     }
 
-    /** GET /api/attendance/student/{studentId} — All attendance for a student */
-    @GetMapping("/student/{studentId}")
-    public ResponseEntity<ApiResponse<List<AttendanceDTO>>> getAttendanceByStudent(@PathVariable("studentId") Long studentId) {
-        List<AttendanceDTO> attendance = attendanceService.getAttendanceByStudent(studentId);
+    /** GET /api/attendance/person/{personType}/{personId} — All attendance for a person */
+    @GetMapping("/person/{personType}/{personId}")
+    public ResponseEntity<ApiResponse<List<AttendanceDTO>>> getAttendanceByPerson(@PathVariable("personType") com.school.common.enums.PersonType personType, @PathVariable("personId") Long personId) {
+        List<AttendanceDTO> attendance = attendanceService.getAttendanceByPerson(personType, personId);
         return ResponseEntity.ok(ApiResponse.success(attendance));
     }
 
-    /** GET /api/attendance/today/{studentId} — Today's attendance */
-    @GetMapping("/today/{studentId}")
-    public ResponseEntity<ApiResponse<AttendanceDTO>> getTodayAttendance(@PathVariable("studentId") Long studentId) {
-        AttendanceDTO attendance = attendanceService.getTodayAttendance(studentId);
+    /** GET /api/attendance/today/{personType}/{personId} — Today's attendance */
+    @GetMapping("/today/{personType}/{personId}")
+    public ResponseEntity<ApiResponse<AttendanceDTO>> getTodayAttendance(@PathVariable("personType") com.school.common.enums.PersonType personType, @PathVariable("personId") Long personId) {
+        AttendanceDTO attendance = attendanceService.getTodayAttendance(personType, personId);
         return ResponseEntity.ok(ApiResponse.success(attendance));
     }
 
-    /** GET /api/attendance/today — Today's attendance for all students */
-    @GetMapping("/today")
-    public ResponseEntity<ApiResponse<List<AttendanceDTO>>> getTodayAttendanceAll() {
-        List<AttendanceDTO> attendance = attendanceService.getTodayAttendanceAll();
+    /** GET /api/attendance/today/{personType} — Today's attendance for all persons of a type */
+    @GetMapping("/today/{personType}")
+    public ResponseEntity<ApiResponse<List<AttendanceDTO>>> getTodayAttendanceAll(@PathVariable("personType") com.school.common.enums.PersonType personType) {
+        List<AttendanceDTO> attendance = attendanceService.getTodayAttendanceAll(personType);
         return ResponseEntity.ok(ApiResponse.success(attendance));
+    }
+
+    /** GET /api/attendance/summary — Get summary of attendance */
+    @GetMapping("/summary")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAttendanceSummary(
+            @RequestParam("date") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date,
+            @RequestParam("entityType") com.school.common.enums.PersonType entityType,
+            @RequestParam(value = "classId", required = false) String classId,
+            @RequestParam(value = "sectionId", required = false) String sectionId) {
+        
+        List<AttendanceDTO> attendanceList = attendanceService.getAttendanceByDateAndType(date, entityType);
+        
+        long total = 0; // Requires communication with other microservices (Student, Teacher, Worker) which might not be fully implemented here. 
+        // A temporary fallback is to count from attendance list itself, but proper implementation would fetch total from respective services.
+        long present = attendanceList.stream().filter(a -> a.getStatus() == com.school.common.enums.AttendanceStatus.PRESENT).count();
+        long absent = attendanceList.stream().filter(a -> a.getStatus() == com.school.common.enums.AttendanceStatus.ABSENT).count();
+        
+        return ResponseEntity.ok(ApiResponse.success(Map.of(
+            "total", total,
+            "present", present,
+            "absent", absent,
+            "records", attendanceList
+        )));
     }
 
     // ---- Holidays ----

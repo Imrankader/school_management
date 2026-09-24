@@ -20,8 +20,11 @@ public class AttendanceDTO {
 
     private Long id;
 
-    @NotNull(message = "Student ID is required")
-    private Long studentId;
+    @NotNull(message = "Person Type is required")
+    private com.school.common.enums.PersonType personType;
+
+    @NotNull(message = "Person ID is required")
+    private Long personId;
 
     @NotNull(message = "Date is required")
     private LocalDate date;

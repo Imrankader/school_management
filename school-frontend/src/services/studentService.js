@@ -1,13 +1,23 @@
 import api from './api';
 
 export const studentService = {
-  getAllStudents: async () => {
-    const response = await api.get('/api/students');
+  getAllStudents: async (params = {}) => {
+    const response = await api.get('/api/students', { params });
     return response.data;
   },
 
   getStudentById: async (id) => {
     const response = await api.get(`/api/students/${id}`);
+    return response.data;
+  },
+
+  getDistinctClasses: async () => {
+    const response = await api.get('/api/students/classes');
+    return response.data;
+  },
+
+  getActiveStudentsByClass: async (className) => {
+    const response = await api.get(`/api/students/class/${encodeURIComponent(className)}/active`);
     return response.data;
   },
 
@@ -23,6 +33,11 @@ export const studentService = {
 
   deleteStudent: async (id) => {
     const response = await api.delete(`/api/students/${id}`);
+    return response.data;
+  },
+
+  updateStudentStatus: async (id, status) => {
+    const response = await api.patch(`/api/students/${id}/status`, { status });
     return response.data;
   },
 

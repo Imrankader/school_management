@@ -32,32 +32,39 @@ public class AttendanceService {
 
     public AttendanceDTO markAttendance(AttendanceDTO dto) {
         Attendance attendance = Attendance.builder()
-                .studentId(dto.getStudentId())
+                .personType(dto.getPersonType())
+                .personId(dto.getPersonId())
                 .date(dto.getDate())
                 .status(dto.getStatus())
                 .build();
         Attendance saved = attendanceRepository.save(attendance);
-        log.info("Marked attendance for student {} on {}: {}", dto.getStudentId(), dto.getDate(), dto.getStatus());
+        log.info("Marked attendance for {} {} on {}: {}", dto.getPersonType(), dto.getPersonId(), dto.getDate(), dto.getStatus());
         return toDTO(saved);
     }
 
-    public List<AttendanceDTO> getAttendanceByStudent(Long studentId) {
-        return attendanceRepository.findByStudentId(studentId).stream()
+    public List<AttendanceDTO> getAttendanceByPerson(com.school.common.enums.PersonType personType, Long personId) {
+        return attendanceRepository.findByPersonTypeAndPersonId(personType, personId).stream()
                 .map(this::toDTO)
                 .toList();
     }
 
-    public AttendanceDTO getTodayAttendance(Long studentId) {
+    public AttendanceDTO getTodayAttendance(com.school.common.enums.PersonType personType, Long personId) {
         LocalDate today = LocalDate.now();
-        Attendance attendance = attendanceRepository.findByStudentIdAndDate(studentId, today)
+        Attendance attendance = attendanceRepository.findByPersonTypeAndPersonIdAndDate(personType, personId, today)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Attendance record not found for student " + studentId + " today"));
+                        "Attendance record not found for " + personType + " " + personId + " today"));
         return toDTO(attendance);
     }
 
-    public List<AttendanceDTO> getTodayAttendanceAll() {
+    public List<AttendanceDTO> getTodayAttendanceAll(com.school.common.enums.PersonType personType) {
         LocalDate today = LocalDate.now();
-        return attendanceRepository.findByDate(today).stream()
+        return attendanceRepository.findByPersonTypeAndDate(personType, today).stream()
+                .map(this::toDTO)
+                .toList();
+    }
+    
+    public List<AttendanceDTO> getAttendanceByDateAndType(LocalDate date, com.school.common.enums.PersonType personType) {
+        return attendanceRepository.findByPersonTypeAndDate(personType, date).stream()
                 .map(this::toDTO)
                 .toList();
     }
@@ -65,7 +72,8 @@ public class AttendanceService {
     private AttendanceDTO toDTO(Attendance attendance) {
         return AttendanceDTO.builder()
                 .id(attendance.getId())
-                .studentId(attendance.getStudentId())
+                .personType(attendance.getPersonType())
+                .personId(attendance.getPersonId())
                 .date(attendance.getDate())
                 .status(attendance.getStatus())
                 .build();
