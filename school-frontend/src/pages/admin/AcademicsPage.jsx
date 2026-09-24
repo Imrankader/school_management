@@ -392,3 +392,4 @@ export const AcademicsPage = () => {
     </div>
   );
 };
+ //project end 
