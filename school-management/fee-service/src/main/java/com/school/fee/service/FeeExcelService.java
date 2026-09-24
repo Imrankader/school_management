@@ -43,15 +43,32 @@ public class FeeExcelService {
     };
 
     /**
-     * Generate an Excel template specifically for the given class, pre-filled with active students.
+     * Generate an Excel template pre-filled with active students.
+     * If className is empty or "ALL", generates a multi-class template with all active students across all classes.
      */
     public byte[] generateTemplate(String className) throws IOException {
-        List<StudentInfoDTO> activeStudents = studentServiceClient.getActiveStudentsByClass(className);
+        List<StudentInfoDTO> activeStudents;
+        String sheetTitle;
+        if (className == null || className.isBlank() || "ALL".equalsIgnoreCase(className) || "All Classes".equalsIgnoreCase(className)) {
+            List<StudentInfoDTO> all = studentServiceClient.getAllStudents();
+            activeStudents = (all != null) ? all.stream()
+                    .filter(s -> !Boolean.FALSE.equals(s.getIsActive()))
+                    .sorted((a, b) -> {
+                        int c = naturalClassCompare(a.getClassName(), b.getClassName());
+                        if (c != 0) return c;
+                        return String.valueOf(a.getName()).compareToIgnoreCase(String.valueOf(b.getName()));
+                    })
+                    .toList() : Collections.emptyList();
+            sheetTitle = "Multi-Class Billing Template";
+        } else {
+            activeStudents = studentServiceClient.getActiveStudentsByClass(className);
+            sheetTitle = className + " Billing Template";
+        }
 
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            Sheet sheet = workbook.createSheet(className + " Billing Template");
+            Sheet sheet = workbook.createSheet(sheetTitle);
             sheet.createFreezePane(0, 1);
 
             // Header Style
@@ -124,7 +141,7 @@ public class FeeExcelService {
 
                 // Col 2: Class
                 Cell c2 = row.createCell(2);
-                c2.setCellValue(student.getClassName() != null ? student.getClassName() : className);
+                c2.setCellValue(student.getClassName() != null ? student.getClassName() : (className != null ? className : ""));
                 c2.setCellStyle(centerStyle);
 
                 // Cols 3 - 10: Empty financial fields
@@ -161,8 +178,10 @@ public class FeeExcelService {
     }
 
     /**
-     * Process bulk upload of billing records for a specific class.
-     * Enforces atomic transaction: if any row fails, zero records are committed.
+     * Process bulk upload of billing records across multiple classes.
+     * Reads each row individually, determines class from the Excel file,
+     * validates that the student actually belongs to that class, and enforces atomicity:
+     * if any row fails validation, zero records are committed.
      */
     @Transactional
     public BulkUploadBillingResult processBulkUpload(String expectedClassName, MultipartFile file) throws IOException {
@@ -182,11 +201,15 @@ public class FeeExcelService {
         List<StudentInfoDTO> allStudents = studentServiceClient.getAllStudents();
         Map<Long, StudentInfoDTO> studentByIdMap = new HashMap<>();
         Map<String, StudentInfoDTO> studentByAdmMap = new HashMap<>();
+        Map<String, List<StudentInfoDTO>> studentByNameMap = new HashMap<>();
         Map<String, List<StudentInfoDTO>> studentByNameAndClassMap = new HashMap<>();
 
         for (StudentInfoDTO s : allStudents) {
             if (s.getId() != null) studentByIdMap.put(s.getId(), s);
             if (s.getAdmissionNumber() != null) studentByAdmMap.put(s.getAdmissionNumber().trim().toLowerCase(), s);
+            if (s.getName() != null) {
+                studentByNameMap.computeIfAbsent(s.getName().trim().toLowerCase(), k -> new ArrayList<>()).add(s);
+            }
             if (s.getName() != null && s.getClassName() != null) {
                 String key = s.getName().trim().toLowerCase() + "|" + s.getClassName().trim().toLowerCase();
                 studentByNameAndClassMap.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
@@ -196,7 +219,6 @@ public class FeeExcelService {
         List<BulkUploadBillingError> errors = new ArrayList<>();
         List<FeeRecordToSave> recordsToSave = new ArrayList<>();
         Map<Long, Integer> seenStudentIdToRow = new HashMap<>();
-        Map<String, Integer> seenStudentNameToRow = new HashMap<>();
 
         try (InputStream in = file.getInputStream();
              Workbook workbook = WorkbookFactory.create(in)) {
@@ -215,7 +237,7 @@ public class FeeExcelService {
                         .build();
             }
 
-            // Validate Header Row
+            // Validate Header Row and resolve dynamic column indexes
             Row headerRow = sheet.getRow(0);
             if (headerRow == null) {
                 return BulkUploadBillingResult.builder()
@@ -224,6 +246,71 @@ public class FeeExcelService {
                         .message("Missing header row in Excel file.")
                         .build();
             }
+
+            int studentNameCol = -1;
+            int admissionNoCol = -1;
+            int classCol = -1;
+            int term1Col = -1;
+            int term2Col = -1;
+            int term3Col = -1;
+            int busCol = -1;
+            int examCol = -1;
+            int paidCol = -1;
+            int totalCol = -1;
+            int outstandingCol = -1;
+            int hiddenIdCol = -1;
+            int hiddenAdmCol = -1;
+
+            short minCol = headerRow.getFirstCellNum();
+            short maxCol = headerRow.getLastCellNum();
+            for (short c = minCol; c < maxCol; c++) {
+                Cell cell = headerRow.getCell(c);
+                if (cell == null) continue;
+                String text = getCellString(cell);
+                if (text == null || text.isBlank()) continue;
+                String clean = text.trim().toLowerCase().replaceAll("[^a-z0-9]", "");
+                if (clean.equals("studentname") || clean.equals("name") || clean.equals("student")) {
+                    if (studentNameCol == -1) studentNameCol = c;
+                } else if (clean.contains("admissionno") || clean.contains("admissionnumber") || clean.contains("admno") || clean.equals("admission")) {
+                    if (admissionNoCol == -1) admissionNoCol = c;
+                } else if (clean.equals("class") || clean.equals("grade") || clean.equals("standard") || clean.equals("classname")) {
+                    if (classCol == -1) classCol = c;
+                } else if (clean.contains("termfee1") || clean.contains("termfees1") || clean.contains("term1") || clean.equals("term1fee")) {
+                    if (term1Col == -1) term1Col = c;
+                } else if (clean.contains("termfee2") || clean.contains("termfees2") || clean.contains("term2") || clean.equals("term2fee")) {
+                    if (term2Col == -1) term2Col = c;
+                } else if (clean.contains("termfee3") || clean.contains("termfees3") || clean.contains("term3") || clean.equals("term3fee")) {
+                    if (term3Col == -1) term3Col = c;
+                } else if (clean.contains("busfee") || clean.contains("busfees") || clean.contains("transport")) {
+                    if (busCol == -1) busCol = c;
+                } else if (clean.contains("examfee") || clean.contains("examfees") || clean.contains("examination")) {
+                    if (examCol == -1) examCol = c;
+                } else if (clean.contains("paidamount") || clean.contains("paidfee") || clean.equals("paid")) {
+                    if (paidCol == -1) paidCol = c;
+                } else if (clean.contains("totalamount") || clean.contains("totalfee") || clean.equals("total")) {
+                    if (totalCol == -1) totalCol = c;
+                } else if (clean.contains("outstanding") || clean.contains("pending")) {
+                    if (outstandingCol == -1) outstandingCol = c;
+                } else if (clean.contains("studentinternalid") || clean.contains("studentid")) {
+                    if (hiddenIdCol == -1) hiddenIdCol = c;
+                } else if (clean.contains("admissionnumber") && c >= TEMPLATE_HEADERS.length) {
+                    if (hiddenAdmCol == -1) hiddenAdmCol = c;
+                }
+            }
+
+            // Defaults if matching headers not found or standard template positions used
+            if (studentNameCol == -1) studentNameCol = 1;
+            if (classCol == -1) classCol = 2;
+            if (term1Col == -1) term1Col = 3;
+            if (term2Col == -1) term2Col = 4;
+            if (term3Col == -1) term3Col = 5;
+            if (busCol == -1) busCol = 6;
+            if (examCol == -1) examCol = 7;
+            if (outstandingCol == -1) outstandingCol = 8;
+            if (paidCol == -1) paidCol = 9;
+            if (totalCol == -1) totalCol = 10;
+            if (hiddenIdCol == -1) hiddenIdCol = TEMPLATE_HEADERS.length;
+            if (hiddenAdmCol == -1) hiddenAdmCol = TEMPLATE_HEADERS.length + 1;
 
             int lastRowNum = sheet.getLastRowNum();
             for (int r = 1; r <= lastRowNum; r++) {
@@ -234,8 +321,9 @@ public class FeeExcelService {
 
                 int excelRow = r + 1; // 1-based display row
 
-                String studentName = getCellString(row.getCell(1));
-                String rowClassName = getCellString(row.getCell(2));
+                String studentName = studentNameCol >= 0 ? getCellString(row.getCell(studentNameCol)) : null;
+                String rowClassName = classCol >= 0 ? getCellString(row.getCell(classCol)) : null;
+                String rowAdmNo = admissionNoCol >= 0 ? getCellString(row.getCell(admissionNoCol)) : null;
 
                 if (studentName == null || studentName.isBlank()) {
                     errors.add(BulkUploadBillingError.builder()
@@ -246,11 +334,12 @@ public class FeeExcelService {
                     continue;
                 }
 
-                // Check hidden column 11 (Student ID) or 12 (Admission Number)
-                String hiddenIdStr = getCellString(row.getCell(TEMPLATE_HEADERS.length));
-                String hiddenAdmStr = getCellString(row.getCell(TEMPLATE_HEADERS.length + 1));
+                // Check hidden columns if available
+                String hiddenIdStr = hiddenIdCol >= 0 ? getCellString(row.getCell(hiddenIdCol)) : null;
+                String hiddenAdmStr = hiddenAdmCol >= 0 ? getCellString(row.getCell(hiddenAdmCol)) : null;
 
                 StudentInfoDTO matchedStudent = null;
+                // 1. Match by internal Student ID if available
                 if (hiddenIdStr != null && !hiddenIdStr.isBlank()) {
                     try {
                         Long sid = Long.parseLong(hiddenIdStr.trim());
@@ -258,56 +347,57 @@ public class FeeExcelService {
                     } catch (NumberFormatException ignored) {}
                 }
 
+                // 2. Match by Admission Number from cell or hidden tracking cell
+                if (matchedStudent == null && rowAdmNo != null && !rowAdmNo.isBlank()) {
+                    matchedStudent = studentByAdmMap.get(rowAdmNo.trim().toLowerCase());
+                }
                 if (matchedStudent == null && hiddenAdmStr != null && !hiddenAdmStr.isBlank()) {
                     matchedStudent = studentByAdmMap.get(hiddenAdmStr.trim().toLowerCase());
                 }
 
-                if (matchedStudent == null) {
-                    // Try to match by Name + Class
-                    String searchClass = (rowClassName != null && !rowClassName.isBlank()) ? rowClassName : expectedClassName;
-                    String key = studentName.trim().toLowerCase() + "|" + searchClass.trim().toLowerCase();
+                // 3. Match by Student Name + Class
+                if (matchedStudent == null && rowClassName != null && !rowClassName.isBlank()) {
+                    String key = studentName.trim().toLowerCase() + "|" + rowClassName.trim().toLowerCase();
                     List<StudentInfoDTO> matches = studentByNameAndClassMap.get(key);
                     if (matches != null && !matches.isEmpty()) {
                         matchedStudent = matches.get(0);
                     }
                 }
 
+                // 4. Match by Name alone across student directory
                 if (matchedStudent == null) {
-                    // Search by Name alone across school to give informative error
-                    StudentInfoDTO foundElsewhere = null;
-                    for (StudentInfoDTO s : allStudents) {
-                        if (s.getName() != null && s.getName().trim().equalsIgnoreCase(studentName.trim())) {
-                            foundElsewhere = s;
-                            break;
-                        }
-                    }
-
-                    if (foundElsewhere != null) {
-                        // Found but different class
-                        errors.add(BulkUploadBillingError.builder()
-                                .row(excelRow)
-                                .studentName(studentName)
-                                .admissionNumber(foundElsewhere.getAdmissionNumber())
-                                .className(rowClassName)
-                                .errorType("Invalid Class")
-                                .errorMessage(String.format("Student \"%s\" belongs to %s, but Excel specifies %s.",
-                                        studentName, foundElsewhere.getClassName(), rowClassName != null ? rowClassName : "unknown"))
-                                .build());
-                        continue;
-                    } else {
-                        errors.add(BulkUploadBillingError.builder()
-                                .row(excelRow)
-                                .studentName(studentName)
-                                .errorType("Student Not Found")
-                                .errorMessage(String.format("Student \"%s\" was not found in the student directory.", studentName))
-                                .build());
-                        continue;
+                    List<StudentInfoDTO> nameMatches = studentByNameMap.get(studentName.trim().toLowerCase());
+                    if (nameMatches != null && !nameMatches.isEmpty()) {
+                        matchedStudent = nameMatches.get(0);
                     }
                 }
 
-                // Student found! Check class mismatch
-                if (rowClassName != null && !rowClassName.isBlank() &&
-                        !rowClassName.trim().equalsIgnoreCase(matchedStudent.getClassName().trim())) {
+                // Student not found anywhere in student directory
+                if (matchedStudent == null) {
+                    errors.add(BulkUploadBillingError.builder()
+                            .row(excelRow)
+                            .studentName(studentName)
+                            .className(rowClassName)
+                            .errorType("Student Not Found")
+                            .errorMessage(String.format("Student \"%s\" was not found in the student directory.", studentName))
+                            .build());
+                    continue;
+                }
+
+                // Class validation: verify student belongs to the class specified in Excel
+                if (rowClassName == null || rowClassName.isBlank()) {
+                    errors.add(BulkUploadBillingError.builder()
+                            .row(excelRow)
+                            .studentName(matchedStudent.getName())
+                            .admissionNumber(matchedStudent.getAdmissionNumber())
+                            .className("Missing")
+                            .errorType("Missing Class")
+                            .errorMessage(String.format("Class is missing in Excel for student \"%s\".", matchedStudent.getName()))
+                            .build());
+                    continue;
+                }
+
+                if (!rowClassName.trim().equalsIgnoreCase(matchedStudent.getClassName().trim())) {
                     errors.add(BulkUploadBillingError.builder()
                             .row(excelRow)
                             .studentName(matchedStudent.getName())
@@ -316,20 +406,6 @@ public class FeeExcelService {
                             .errorType("Invalid Class")
                             .errorMessage(String.format("Student \"%s\" belongs to %s, but Excel specifies %s.",
                                     matchedStudent.getName(), matchedStudent.getClassName(), rowClassName))
-                            .build());
-                    continue;
-                }
-
-                // Check if student belongs to selected class
-                if (!expectedClassName.trim().equalsIgnoreCase(matchedStudent.getClassName().trim())) {
-                    errors.add(BulkUploadBillingError.builder()
-                            .row(excelRow)
-                            .studentName(matchedStudent.getName())
-                            .admissionNumber(matchedStudent.getAdmissionNumber())
-                            .className(matchedStudent.getClassName())
-                            .errorType("Invalid Class")
-                            .errorMessage(String.format("Student \"%s\" belongs to %s, but upload is for %s.",
-                                    matchedStudent.getName(), matchedStudent.getClassName(), expectedClassName))
                             .build());
                     continue;
                 }
@@ -348,7 +424,7 @@ public class FeeExcelService {
                     continue;
                 }
 
-                // Check duplicate within the uploaded Excel file
+                // Check duplicate student within the uploaded Excel file
                 if (seenStudentIdToRow.containsKey(matchedStudent.getId())) {
                     int prevRow = seenStudentIdToRow.get(matchedStudent.getId());
                     errors.add(BulkUploadBillingError.builder()
@@ -364,15 +440,14 @@ public class FeeExcelService {
                     continue;
                 }
                 seenStudentIdToRow.put(matchedStudent.getId(), excelRow);
-                seenStudentNameToRow.put(matchedStudent.getName().trim().toLowerCase(), excelRow);
 
                 // Parse & Validate numeric fee amounts
-                BigDecimal termFees1 = parseAmount(row.getCell(3), "Term Fees - 1", excelRow, matchedStudent, errors);
-                BigDecimal termFees2 = parseAmount(row.getCell(4), "Term Fees - 2", excelRow, matchedStudent, errors);
-                BigDecimal termFees3 = parseAmount(row.getCell(5), "Term Fees - 3", excelRow, matchedStudent, errors);
-                BigDecimal busFees = parseAmount(row.getCell(6), "Bus Fees", excelRow, matchedStudent, errors);
-                BigDecimal examFees = parseAmount(row.getCell(7), "Exam Fees", excelRow, matchedStudent, errors);
-                BigDecimal paidAmount = parseAmount(row.getCell(9), "Paid Amount", excelRow, matchedStudent, errors);
+                BigDecimal termFees1 = term1Col >= 0 ? parseAmount(row.getCell(term1Col), "Term Fees - 1", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                BigDecimal termFees2 = term2Col >= 0 ? parseAmount(row.getCell(term2Col), "Term Fees - 2", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                BigDecimal termFees3 = term3Col >= 0 ? parseAmount(row.getCell(term3Col), "Term Fees - 3", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                BigDecimal busFees = busCol >= 0 ? parseAmount(row.getCell(busCol), "Bus Fees", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                BigDecimal examFees = examCol >= 0 ? parseAmount(row.getCell(examCol), "Exam Fees", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                BigDecimal paidAmount = paidCol >= 0 ? parseAmount(row.getCell(paidCol), "Paid Amount", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
 
                 if (termFees1 == null || termFees2 == null || termFees3 == null ||
                         busFees == null || examFees == null || paidAmount == null) {
@@ -382,8 +457,6 @@ public class FeeExcelService {
 
                 // Calculate Total & Outstanding
                 BigDecimal totalAmount = termFees1.add(termFees2).add(termFees3).add(busFees).add(examFees);
-
-                // Check paid amount doesn't exceed total amount unnecessarily or validate
                 BigDecimal outstandingAmount = totalAmount.subtract(paidAmount);
                 if (outstandingAmount.compareTo(BigDecimal.ZERO) < 0) {
                     outstandingAmount = BigDecimal.ZERO;
@@ -419,8 +492,12 @@ public class FeeExcelService {
 
         // All rows are 100% valid -> Commit to database atomically
         int savedCount = 0;
+        Set<String> distinctProcessedClasses = new LinkedHashSet<>();
         for (FeeRecordToSave rec : recordsToSave) {
-            Fee fee = feeRepository.findByStudentIdAndClassName(rec.student.getId(), expectedClassName)
+            String studentClass = rec.student.getClassName();
+            distinctProcessedClasses.add(studentClass);
+
+            Fee fee = feeRepository.findByStudentIdAndClassName(rec.student.getId(), studentClass)
                     .orElse(feeRepository.findFirstByStudentId(rec.student.getId()).orElse(null));
 
             FeeStatus status;
@@ -437,7 +514,7 @@ public class FeeExcelService {
                         .studentId(rec.student.getId())
                         .admissionNumber(rec.student.getAdmissionNumber())
                         .studentName(rec.student.getName())
-                        .className(expectedClassName)
+                        .className(studentClass)
                         .termFees1(rec.termFees1)
                         .termFees2(rec.termFees2)
                         .termFees3(rec.termFees3)
@@ -452,7 +529,7 @@ public class FeeExcelService {
             } else {
                 fee.setAdmissionNumber(rec.student.getAdmissionNumber());
                 fee.setStudentName(rec.student.getName());
-                fee.setClassName(expectedClassName);
+                fee.setClassName(studentClass);
                 fee.setTermFees1(rec.termFees1);
                 fee.setTermFees2(rec.termFees2);
                 fee.setTermFees3(rec.termFees3);
@@ -467,12 +544,17 @@ public class FeeExcelService {
             savedCount++;
         }
 
+        String classListStr = String.join(", ", distinctProcessedClasses);
+        String msg = distinctProcessedClasses.size() > 1
+                ? String.format("Bulk Upload Successful: %d billing records committed across %d classes (%s)!", savedCount, distinctProcessedClasses.size(), classListStr)
+                : String.format("Bulk Upload Successful: %d billing records committed for %s!", savedCount, classListStr);
+
         return BulkUploadBillingResult.builder()
                 .success(true)
                 .totalRows(recordsToSave.size())
                 .insertedCount(savedCount)
                 .errorCount(0)
-                .message(String.format("Bulk Upload Successful: %d billing records committed for %s!", savedCount, expectedClassName))
+                .message(msg)
                 .errors(Collections.emptyList())
                 .build();
     }
@@ -613,6 +695,28 @@ public class FeeExcelService {
             log.error("Failed to generate error Excel report: {}", e.getMessage());
             return null;
         }
+    private int naturalClassCompare(String a, String b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+
+        int numA = extractNumber(a);
+        int numB = extractNumber(b);
+
+        if (numA != -1 && numB != -1) {
+            return Integer.compare(numA, numB);
+        }
+        return a.compareToIgnoreCase(b);
+    }
+
+    private int extractNumber(String s) {
+        String numStr = s.replaceAll("\\D+", "");
+        if (!numStr.isEmpty()) {
+            try {
+                return Integer.parseInt(numStr);
+            } catch (NumberFormatException ignored) {}
+        }
+        return -1;
     }
 
     private static class FeeRecordToSave {
