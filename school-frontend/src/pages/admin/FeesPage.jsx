@@ -17,32 +17,51 @@ import {
   Layers,
   CreditCard,
   History,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  FileSpreadsheet,
+  TrendingUp,
+  Percent,
+  RotateCcw,
+  Filter,
   CheckCircle,
   AlertTriangle,
   XCircle,
-  FileSpreadsheet,
   Users
 } from 'lucide-react';
 
 export const FeesPage = () => {
-  // Navigation / View State: 'classes' | 'class-details'
+  // Navigation View: 'classes' (main ERP overview) | 'class-details' (detailed class breakdown)
   const [view, setView] = useState('classes');
   const [selectedClass, setSelectedClass] = useState('');
 
   // Class Summary Data
   const [classSummaries, setClassSummaries] = useState([]);
   const [loadingSummaries, setLoadingSummaries] = useState(false);
+  const [summaryError, setSummaryError] = useState(null);
+
+  // Recent Payments Data (Section 4)
+  const [recentPayments, setRecentPayments] = useState([]);
+  const [loadingRecentPayments, setLoadingRecentPayments] = useState(false);
+
+  // Filters for Main View
+  const [academicYearFilter, setAcademicYearFilter] = useState('2026-2027');
+  const [classFilter, setClassFilter] = useState('All');
+  const [mainStatusFilter, setMainStatusFilter] = useState('All');
+  const [mainSearchTerm, setMainSearchTerm] = useState('');
 
   // Student Billing Data for Selected Class
   const [studentBillingRows, setStudentBillingRows] = useState([]);
   const [activeStudentsInClass, setActiveStudentsInClass] = useState([]);
   const [loadingClassStudents, setLoadingClassStudents] = useState(false);
+  const [classDetailsError, setClassDetailsError] = useState(null);
 
-  // Search & Filter within Class
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  // Search & Filter within Selected Class
+  const [classSearchTerm, setClassSearchTerm] = useState('');
+  const [classStudentStatusFilter, setClassStudentStatusFilter] = useState('All');
 
-  // Expanded Row IDs (for Screenshot 2 behavior)
+  // Expanded Row IDs for breakdown details
   const [expandedRows, setExpandedRows] = useState({});
 
   // Pagination for Selected Class Student Billing
@@ -51,10 +70,11 @@ export const FeesPage = () => {
 
   // Modals
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkModalClass, setBulkModalClass] = useState('');
   const [isIndividualModalOpen, setIsIndividualModalOpen] = useState(false);
   const [individualModalStudent, setIndividualModalStudent] = useState(null);
 
-  // Record Payment Modal (Preserved feature)
+  // Record Payment Modal
   const [paymentModal, setPaymentModal] = useState(false);
   const [selectedFeeForPayment, setSelectedFeeForPayment] = useState(null);
   const [paymentForm, setPaymentForm] = useState({
@@ -64,7 +84,7 @@ export const FeesPage = () => {
     note: '',
   });
 
-  // Payment History Modal (Preserved feature)
+  // Payment History Modal
   const [historyModal, setHistoryModal] = useState(false);
   const [historyFee, setHistoryFee] = useState(null);
   const [paymentsList, setPaymentsList] = useState([]);
@@ -74,30 +94,55 @@ export const FeesPage = () => {
 
   useEffect(() => {
     loadClassSummaries();
+    loadRecentPayments();
   }, []);
 
   const loadClassSummaries = async () => {
     try {
       setLoadingSummaries(true);
+      setSummaryError(null);
       const res = await feeService.getClassBillingSummary();
-      if (res.success && res.data) {
+      if (res && res.success && Array.isArray(res.data)) {
         setClassSummaries(res.data);
+      } else if (Array.isArray(res)) {
+        setClassSummaries(res);
       } else {
         setClassSummaries([]);
       }
     } catch (err) {
       console.error('Failed to load class billing summaries:', err);
-      addToast('Failed to load class-wise billing summaries.', 'error');
+      setSummaryError('Unable to load billing data. Please try again.');
+      setClassSummaries([]);
     } finally {
       setLoadingSummaries(false);
+    }
+  };
+
+  const loadRecentPayments = async () => {
+    try {
+      setLoadingRecentPayments(true);
+      const res = await feeService.getRecentPayments(10);
+      if (res && res.success && Array.isArray(res.data)) {
+        setRecentPayments(res.data);
+      } else if (Array.isArray(res)) {
+        setRecentPayments(res);
+      } else {
+        setRecentPayments([]);
+      }
+    } catch (err) {
+      console.error('Failed to load recent payments:', err);
+      setRecentPayments([]);
+    } finally {
+      setLoadingRecentPayments(false);
     }
   };
 
   const loadStudentBillingForClass = async (className) => {
     try {
       setLoadingClassStudents(true);
-      setSearchTerm('');
-      setStatusFilter('All');
+      setClassDetailsError(null);
+      setClassSearchTerm('');
+      setClassStudentStatusFilter('All');
       setCurrentPage(1);
       setExpandedRows({});
 
@@ -119,7 +164,8 @@ export const FeesPage = () => {
       }
     } catch (err) {
       console.error(`Failed to load student billing for ${className}:`, err);
-      addToast(`Failed to load student billing records for ${className}.`, 'error');
+      setClassDetailsError(`Unable to load student billing records for ${className}. Please try again.`);
+      setStudentBillingRows([]);
     } finally {
       setLoadingClassStudents(false);
     }
@@ -135,6 +181,7 @@ export const FeesPage = () => {
     setView('classes');
     setSelectedClass('');
     loadClassSummaries();
+    loadRecentPayments();
   };
 
   const toggleRowExpand = (sNo) => {
@@ -147,33 +194,198 @@ export const FeesPage = () => {
   // Currency Formatter
   const formatCurrency = (val) => {
     const num = Number(val || 0);
-    return '₹' + num.toLocaleString('en-IN', {
+    return '₹ ' + num.toLocaleString('en-IN', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
   };
 
-  // Status Badge Renderer matching Screenshot 2 visual style
-  const renderStatusBadge = (status) => {
+  // Format Date
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  // Financial Aggregates
+  const financialOverview = useMemo(() => {
+    const totalStudents = classSummaries.reduce((sum, c) => sum + (c.totalStudents || 0), 0);
+    const totalBilled = classSummaries.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+    const totalCollected = classSummaries.reduce((sum, c) => sum + (c.totalPaidAmount || 0), 0);
+    const totalOutstanding = classSummaries.reduce((sum, c) => sum + (c.totalOutstandingAmount || 0), 0);
+
+    const collectionRate = totalBilled > 0
+      ? ((totalCollected / totalBilled) * 100).toFixed(1)
+      : '0.0';
+
+    return {
+      totalStudents,
+      totalBilled,
+      totalCollected,
+      totalOutstanding,
+      collectionRate: parseFloat(collectionRate),
+    };
+  }, [classSummaries]);
+
+  // Distinct class list for filter dropdown
+  const distinctClasses = useMemo(() => {
+    return classSummaries.map((c) => c.className).filter(Boolean);
+  }, [classSummaries]);
+
+  // Filtered Class Summaries
+  const filteredClassSummaries = useMemo(() => {
+    return classSummaries.filter((row) => {
+      const q = mainSearchTerm.trim().toLowerCase();
+      const matchSearch = !q || (row.className && row.className.toLowerCase().includes(q));
+      const matchClass = classFilter === 'All' || row.className === classFilter;
+
+      let rowStatus = 'Unbilled';
+      if ((row.totalAmount || 0) === 0) {
+        rowStatus = 'Unbilled';
+      } else if ((row.totalOutstandingAmount || 0) === 0) {
+        rowStatus = 'Cleared';
+      } else if ((row.totalPaidAmount || 0) > 0) {
+        rowStatus = 'Partial';
+      } else {
+        rowStatus = 'Pending';
+      }
+
+      const matchStatus = mainStatusFilter === 'All' || mainStatusFilter === rowStatus;
+      return matchSearch && matchClass && matchStatus;
+    });
+  }, [classSummaries, mainSearchTerm, classFilter, mainStatusFilter]);
+
+  // Filtered & Paginated Student Billing Rows within Selected Class
+  const filteredBillingRows = useMemo(() => {
+    return studentBillingRows.filter((row) => {
+      const q = classSearchTerm.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        (row.studentName && row.studentName.toLowerCase().includes(q)) ||
+        (row.admissionNumber && row.admissionNumber.toLowerCase().includes(q));
+
+      const matchStatus =
+        classStudentStatusFilter === 'All' ||
+        (classStudentStatusFilter === 'Settled' && (row.status === 'settled' || row.status === 'PAID')) ||
+        (classStudentStatusFilter === 'Partially Paid' && (row.status === 'partially paid' || row.status === 'PARTIAL')) ||
+        (classStudentStatusFilter === 'Pending' && (row.status === 'pending' || row.status === 'PENDING')) ||
+        (classStudentStatusFilter === 'Unbilled' && row.status === 'unbilled');
+
+      return matchSearch && matchStatus;
+    });
+  }, [studentBillingRows, classSearchTerm, classStudentStatusFilter]);
+
+  const totalPages = Math.ceil(filteredBillingRows.length / pageSize) || 1;
+  const paginatedBillingRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredBillingRows.slice(start, start + pageSize);
+  }, [filteredBillingRows, currentPage]);
+
+  // Selected Class Aggregates
+  const classMetrics = useMemo(() => {
+    const count = studentBillingRows.length;
+    const billed = studentBillingRows.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
+    const paid = studentBillingRows.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
+    const outstanding = studentBillingRows.reduce((sum, r) => sum + (r.outstandingAmount || 0), 0);
+    const rate = billed > 0 ? ((paid / billed) * 100).toFixed(1) : '0.0';
+    return { count, billed, paid, outstanding, rate };
+  }, [studentBillingRows]);
+
+  // Status Badge Helper for Class Table
+  const getClassStatusBadge = (row) => {
+    const total = row.totalAmount || 0;
+    const pending = row.totalOutstandingAmount || 0;
+    const paid = row.totalPaidAmount || 0;
+
+    if (total === 0) {
+      return (
+        <span
+          style={{
+            padding: '0.2rem 0.6rem',
+            borderRadius: '4px',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            backgroundColor: '#f1f5f9',
+            color: '#475569',
+            border: '1px solid #e2e8f0',
+          }}
+        >
+          Unbilled
+        </span>
+      );
+    }
+    if (pending === 0 && paid > 0) {
+      return (
+        <span
+          style={{
+            padding: '0.2rem 0.6rem',
+            borderRadius: '4px',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            backgroundColor: '#ecfdf5',
+            color: '#047857',
+            border: '1px solid #a7f3d0',
+          }}
+        >
+          Cleared
+        </span>
+      );
+    }
+    if (paid > 0 && pending > 0) {
+      return (
+        <span
+          style={{
+            padding: '0.2rem 0.6rem',
+            borderRadius: '4px',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            backgroundColor: '#fffbeb',
+            color: '#b45309',
+            border: '1px solid #fde68a',
+          }}
+        >
+          Partially Paid
+        </span>
+      );
+    }
+    return (
+      <span
+        style={{
+          padding: '0.2rem 0.6rem',
+          borderRadius: '4px',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          backgroundColor: '#fef2f2',
+          color: '#b91c1c',
+          border: '1px solid #fecaca',
+        }}
+      >
+        Pending
+      </span>
+    );
+  };
+
+  // Status Badge for Student Row
+  const renderStudentStatusBadge = (status) => {
     const s = (status || '').toLowerCase();
     if (s === 'settled' || s === 'paid') {
       return (
         <span
           style={{
-            backgroundColor: '#dcfce7',
-            color: '#15803d',
-            border: '1px solid #bbf7d0',
-            borderRadius: '9999px',
-            padding: '0.2rem 0.65rem',
+            backgroundColor: '#ecfdf5',
+            color: '#047857',
+            border: '1px solid #a7f3d0',
+            borderRadius: '4px',
+            padding: '0.2rem 0.55rem',
             fontSize: '0.75rem',
             fontWeight: 600,
-            textTransform: 'lowercase',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.25rem',
           }}
         >
-          settled
+          Settled
         </span>
       );
     }
@@ -181,20 +393,16 @@ export const FeesPage = () => {
       return (
         <span
           style={{
-            backgroundColor: '#fef3c7',
+            backgroundColor: '#fffbeb',
             color: '#b45309',
             border: '1px solid #fde68a',
-            borderRadius: '9999px',
-            padding: '0.2rem 0.65rem',
+            borderRadius: '4px',
+            padding: '0.2rem 0.55rem',
             fontSize: '0.75rem',
             fontWeight: 600,
-            textTransform: 'lowercase',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.25rem',
           }}
         >
-          partially paid
+          Partially Paid
         </span>
       );
     }
@@ -202,20 +410,16 @@ export const FeesPage = () => {
       return (
         <span
           style={{
-            backgroundColor: '#fee2e2',
+            backgroundColor: '#fef2f2',
             color: '#b91c1c',
             border: '1px solid #fecaca',
-            borderRadius: '9999px',
-            padding: '0.2rem 0.65rem',
+            borderRadius: '4px',
+            padding: '0.2rem 0.55rem',
             fontSize: '0.75rem',
             fontWeight: 600,
-            textTransform: 'lowercase',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.25rem',
           }}
         >
-          outstanding
+          Outstanding
         </span>
       );
     }
@@ -225,64 +429,16 @@ export const FeesPage = () => {
           backgroundColor: '#f1f5f9',
           color: '#64748b',
           border: '1px solid #e2e8f0',
-          borderRadius: '9999px',
-          padding: '0.2rem 0.65rem',
+          borderRadius: '4px',
+          padding: '0.2rem 0.55rem',
           fontSize: '0.75rem',
           fontWeight: 600,
-          textTransform: 'lowercase',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.25rem',
         }}
       >
-        unbilled
+        Unbilled
       </span>
     );
   };
-
-  // Filtered & Paginated Student Billing Rows
-  const filteredBillingRows = useMemo(() => {
-    return studentBillingRows.filter((row) => {
-      const q = searchTerm.trim().toLowerCase();
-      const matchSearch =
-        !q ||
-        (row.studentName && row.studentName.toLowerCase().includes(q)) ||
-        (row.admissionNumber && row.admissionNumber.toLowerCase().includes(q));
-
-      const matchStatus =
-        statusFilter === 'All' ||
-        (statusFilter === 'Settled' && (row.status === 'settled' || row.status === 'PAID')) ||
-        (statusFilter === 'Partially Paid' && (row.status === 'partially paid' || row.status === 'PARTIAL')) ||
-        (statusFilter === 'Pending' && (row.status === 'pending' || row.status === 'PENDING')) ||
-        (statusFilter === 'Unbilled' && row.status === 'unbilled');
-
-      return matchSearch && matchStatus;
-    });
-  }, [studentBillingRows, searchTerm, statusFilter]);
-
-  const totalPages = Math.ceil(filteredBillingRows.length / pageSize) || 1;
-  const paginatedBillingRows = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredBillingRows.slice(start, start + pageSize);
-  }, [filteredBillingRows, currentPage]);
-
-  // Overall Global Aggregates for Summary Cards
-  const globalMetrics = useMemo(() => {
-    const totalStudents = classSummaries.reduce((sum, c) => sum + (c.totalStudents || 0), 0);
-    const totalAmount = classSummaries.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
-    const totalPaid = classSummaries.reduce((sum, c) => sum + (c.totalPaidAmount || 0), 0);
-    const totalOutstanding = classSummaries.reduce((sum, c) => sum + (c.totalOutstandingAmount || 0), 0);
-    return { totalStudents, totalAmount, totalPaid, totalOutstanding };
-  }, [classSummaries]);
-
-  // Selected Class Aggregates
-  const classMetrics = useMemo(() => {
-    const count = studentBillingRows.length;
-    const billed = studentBillingRows.reduce((sum, r) => sum + (r.totalAmount || 0), 0);
-    const paid = studentBillingRows.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
-    const outstanding = studentBillingRows.reduce((sum, r) => sum + (r.outstandingAmount || 0), 0);
-    return { count, billed, paid, outstanding };
-  }, [studentBillingRows]);
 
   // Open Payment Modal
   const openPaymentModal = (row) => {
@@ -314,6 +470,7 @@ export const FeesPage = () => {
       setPaymentModal(false);
       setSelectedFeeForPayment(null);
       loadStudentBillingForClass(selectedClass);
+      loadRecentPayments();
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to record payment.', 'error');
     }
@@ -329,8 +486,10 @@ export const FeesPage = () => {
     try {
       setLoadingHistory(true);
       const res = await feeService.getPaymentsByFee(row.feeId);
-      if (res.success && res.data) {
+      if (res && res.success && Array.isArray(res.data)) {
         setPaymentsList(res.data);
+      } else if (Array.isArray(res)) {
+        setPaymentsList(res);
       } else {
         setPaymentsList([]);
       }
@@ -341,111 +500,436 @@ export const FeesPage = () => {
     }
   };
 
+  const handleOpenBulkForClass = (clsName) => {
+    setBulkModalClass(clsName || (distinctClasses[0] || ''));
+    setIsBulkModalOpen(true);
+  };
+
   return (
-    <div className="page-container" style={{ padding: '1.5rem 2rem' }}>
+    <div className="page-container" style={{ padding: '1.5rem 2rem', maxWidth: '1440px', margin: '0 auto' }}>
       {/* ========================================================================= */}
-      {/* 1. CLASS SUMMARY VIEW (MAIN VIEW) */}
+      {/* 1. MAIN ERP BILLING MANAGEMENT VIEW */}
       {/* ========================================================================= */}
       {view === 'classes' && (
         <div>
           {/* Header */}
           <div
-            className="page-header"
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center',
+              alignItems: 'flex-start',
+              flexWrap: 'wrap',
+              gap: '1rem',
               marginBottom: '1.5rem',
+              paddingBottom: '1.25rem',
+              borderBottom: '1px solid var(--border-subtle)',
             }}
           >
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
-                <span>Billing</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600, marginBottom: '0.25rem' }}>
+                <span>Finance</span>
                 <span>/</span>
-                <span style={{ color: 'var(--primary)', fontWeight: 600 }}>Class Summary</span>
+                <span style={{ color: 'var(--primary)' }}>Billing & Fee Management</span>
               </div>
               <h1
-                className="page-title"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
                   fontSize: '1.65rem',
                   fontWeight: 700,
                   margin: 0,
+                  color: 'var(--text-main)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
                 }}
               >
-                <DollarSign className="text-primary" /> Billing Portal
+                Billing & Fee Management
               </h1>
-              <p className="page-subtitle" style={{ color: 'var(--text-muted)', marginTop: '0.25rem', marginBottom: 0 }}>
-                Class-level overview of fee generation, collections, and outstanding dues.
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
+                Manage student fee structures, collections, payments and outstanding balances.
               </p>
+            </div>
+
+            {/* SECTION 5 — QUICK ACTIONS */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
+                onClick={() => {
+                  loadClassSummaries();
+                  loadRecentPayments();
+                }}
+                disabled={loadingSummaries}
+                title="Reload financial and billing data"
+              >
+                <RotateCcw size={15} className={loadingSummaries ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
+                onClick={() => handleOpenBulkForClass('')}
+              >
+                <Upload size={15} />
+                Bulk Upload
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 1rem' }}
+                onClick={() => {
+                  if (distinctClasses.length > 0) {
+                    handleOpenClassDetails(distinctClasses[0]);
+                  }
+                }}
+              >
+                <Layers size={15} />
+                Manage Class Billing
+              </button>
             </div>
           </div>
 
-          {/* Top Summary Cards */}
+          {/* Error Banner */}
+          {summaryError && (
+            <div
+              style={{
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 'var(--radius-md)',
+                padding: '0.9rem 1.25rem',
+                marginBottom: '1.5rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                color: '#991b1b',
+                fontSize: '0.875rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <AlertCircle size={18} />
+                <span>{summaryError}</span>
+              </div>
+              <button
+                className="btn btn-sm btn-secondary"
+                style={{ backgroundColor: '#ffffff', color: '#991b1b', borderColor: '#fca5a5' }}
+                onClick={loadClassSummaries}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* SECTION 1 & 3: COMPACT PROFESSIONAL ERP FINANCIAL OVERVIEW & COLLECTION SUMMARY */}
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '1rem',
-              marginBottom: '1.75rem',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+              gap: '1.25rem',
+              marginBottom: '1.5rem',
             }}
           >
-            <div className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '4px solid #4f46e5' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Total Active Students
+            {/* Section 1: Financial Overview Box */}
+            <div
+              className="card"
+              style={{
+                padding: '1.25rem 1.5rem',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: '#ffffff',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingBottom: '0.75rem',
+                  marginBottom: '0.85rem',
+                  borderBottom: '1px solid var(--border-subtle)',
+                }}
+              >
+                <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', letterSpacing: '0.01em' }}>
+                  Financial Overview
+                </span>
+                <span
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 600,
+                    padding: '0.2rem 0.5rem',
+                    borderRadius: '4px',
+                    backgroundColor: '#f1f5f9',
+                    color: '#475569',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  AY: {academicYearFilter}
+                </span>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 700, color: '#4f46e5', marginTop: '0.25rem' }}>
-                {globalMetrics.totalStudents}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                Across {classSummaries.length} classes
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Billed</span>
+                  <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatCurrency(financialOverview.totalBilled)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total Collected</span>
+                  <span style={{ fontWeight: 700, fontSize: '1rem', color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatCurrency(financialOverview.totalCollected)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Outstanding</span>
+                  <span
+                    style={{
+                      fontWeight: 700,
+                      fontSize: '1rem',
+                      color: financialOverview.totalOutstanding > 0 ? '#b91c1c' : '#047857',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {formatCurrency(financialOverview.totalOutstanding)}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '0.875rem',
+                    paddingTop: '0.5rem',
+                    borderTop: '1px dashed var(--border-subtle)',
+                  }}
+                >
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Collection Rate</span>
+                  <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--primary)', fontVariantNumeric: 'tabular-nums' }}>
+                    {financialOverview.collectionRate}%
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '4px solid #0ea5e9' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Total Billed Amount
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 700, color: '#0ea5e9', marginTop: '0.25rem' }}>
-                {formatCurrency(globalMetrics.totalAmount)}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                Consolidated fee invoices
-              </div>
-            </div>
+            {/* Section 3: Collection Progress & Summary */}
+            <div
+              className="card"
+              style={{
+                padding: '1.25rem 1.5rem',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: '#ffffff',
+                boxShadow: 'var(--shadow-sm)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    paddingBottom: '0.75rem',
+                    marginBottom: '0.85rem',
+                    borderBottom: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', letterSpacing: '0.01em' }}>
+                    Collection Summary
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {financialOverview.totalStudents} Active Students Billed
+                  </span>
+                </div>
 
-            <div className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '4px solid #10b981' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Total Paid Amount
-              </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 700, color: '#10b981', marginTop: '0.25rem' }}>
-                {formatCurrency(globalMetrics.totalPaid)}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                Settled receipts
-              </div>
-            </div>
+                {/* Progress bar */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.4rem', fontWeight: 600 }}>
+                    <span style={{ color: '#047857' }}>
+                      Collected: {formatCurrency(financialOverview.totalCollected)}
+                    </span>
+                    <span style={{ color: financialOverview.totalOutstanding > 0 ? '#b91c1c' : 'var(--text-muted)' }}>
+                      Outstanding: {formatCurrency(financialOverview.totalOutstanding)}
+                    </span>
+                  </div>
 
-            <div className="card" style={{ padding: '1.25rem 1.5rem', borderLeft: '4px solid #ef4444' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Total Outstanding
+                  <div
+                    style={{
+                      height: '10px',
+                      backgroundColor: '#fee2e2',
+                      borderRadius: '9999px',
+                      overflow: 'hidden',
+                      display: 'flex',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${Math.min(financialOverview.collectionRate, 100)}%`,
+                        backgroundColor: '#10b981',
+                        transition: 'width 0.4s ease',
+                      }}
+                      title={`Collected: ${financialOverview.collectionRate}%`}
+                    />
+                  </div>
+                </div>
               </div>
-              <div style={{ fontSize: '1.85rem', fontWeight: 700, color: '#ef4444', marginTop: '0.25rem' }}>
-                {formatCurrency(globalMetrics.totalOutstanding)}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                Pending collection dues
+
+              {/* Status breakdown pills */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '0.5rem',
+                  paddingTop: '0.5rem',
+                  borderTop: '1px solid var(--border-subtle)',
+                  textAlign: 'center',
+                }}
+              >
+                <div style={{ padding: '0.4rem 0.25rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Classes
+                  </div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                    {classSummaries.length}
+                  </div>
+                </div>
+
+                <div style={{ padding: '0.4rem 0.25rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Full Settled
+                  </div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#047857' }}>
+                    {classSummaries.filter((c) => (c.totalAmount || 0) > 0 && (c.totalOutstandingAmount || 0) === 0).length}
+                  </div>
+                </div>
+
+                <div style={{ padding: '0.4rem 0.25rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                    With Dues
+                  </div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#b91c1c' }}>
+                    {classSummaries.filter((c) => (c.totalOutstandingAmount || 0) > 0).length}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Class Summary Main Table (Screenshot 1 Reference) */}
-          <div className="card" style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          {/* FILTERS & SEARCH TOOLBAR */}
+          <div
+            className="card"
+            style={{
+              padding: '0.85rem 1.25rem',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: '#ffffff',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+            }}
+          >
+            {/* Left: Filters */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                <Filter size={15} />
+                <span style={{ fontWeight: 600 }}>Filters:</span>
+              </div>
+
+              {/* Academic Year */}
+              <select
+                className="form-select"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
+                value={academicYearFilter}
+                onChange={(e) => setAcademicYearFilter(e.target.value)}
+              >
+                <option value="2026-2027">AY 2026-2027</option>
+                <option value="2025-2026">AY 2025-2026</option>
+              </select>
+
+              {/* Class Dropdown */}
+              <select
+                className="form-select"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+              >
+                <option value="All">All Classes</option>
+                {distinctClasses.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
+
+              {/* Status Dropdown */}
+              <select
+                className="form-select"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
+                value={mainStatusFilter}
+                onChange={(e) => setMainStatusFilter(e.target.value)}
+              >
+                <option value="All">All Statuses</option>
+                <option value="Cleared">Cleared</option>
+                <option value="Partial">Partially Paid</option>
+                <option value="Pending">Pending</option>
+                <option value="Unbilled">Unbilled</option>
+              </select>
+            </div>
+
+            {/* Right: Search */}
+            <div style={{ position: 'relative', width: '260px' }}>
+              <Search
+                size={14}
+                style={{
+                  position: 'absolute',
+                  left: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Search class..."
+                className="form-input"
+                style={{
+                  paddingLeft: '2.2rem',
+                  paddingRight: '0.75rem',
+                  fontSize: '0.825rem',
+                  height: '34px',
+                }}
+                value={mainSearchTerm}
+                onChange={(e) => setMainSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* SECTION 2 — CLASS BILLING SUMMARY TABLE */}
+          <div
+            className="card"
+            style={{
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: '#ffffff',
+              boxShadow: 'var(--shadow-sm)',
+              overflow: 'hidden',
+              marginBottom: '2rem',
+            }}
+          >
             <div
               style={{
-                padding: '1.1rem 1.5rem',
+                padding: '1rem 1.5rem',
                 borderBottom: '1px solid var(--border-subtle)',
                 display: 'flex',
                 alignItems: 'center',
@@ -453,11 +937,12 @@ export const FeesPage = () => {
                 backgroundColor: '#ffffff',
               }}
             >
-              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Layers size={18} className="text-primary" /> Class-Wise Billing Summary
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Layers size={17} style={{ color: 'var(--primary)' }} />
+                Class Billing Summary
               </div>
-              <div style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>
-                Click on any class row or <strong>View →</strong> to view student details
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Showing {filteredClassSummaries.length} of {classSummaries.length} classes
               </div>
             </div>
 
@@ -465,93 +950,303 @@ export const FeesPage = () => {
               <table className="table" style={{ margin: 0 }}>
                 <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle)' }}>
                   <tr>
-                    <th style={{ padding: '0.85rem 1rem', width: '70px', textAlign: 'center' }}>S.No</th>
-                    <th style={{ padding: '0.85rem 1rem' }}>Class</th>
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>Total Students</th>
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Total Amount</th>
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Total Paid Amount</th>
-                    <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>Total Outstanding Amount</th>
-                    <th style={{ padding: '0.85rem 1rem', width: '120px', textAlign: 'center' }}>Details</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '60px', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>#</th>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Class</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Students</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Billed</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Paid</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Outstanding</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '130px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Collection %</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '110px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '140px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingSummaries ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                        Loading class-wise billing summaries...
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                          <RotateCcw size={22} className="animate-spin text-primary" />
+                          <span style={{ fontSize: '0.9rem' }}>Loading billing data...</span>
+                        </div>
                       </td>
                     </tr>
-                  ) : classSummaries.length === 0 ? (
+                  ) : filteredClassSummaries.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                        No configured classes found in Academic / Student records.
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                          <FileSpreadsheet size={32} style={{ opacity: 0.35 }} />
+                          <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                            No billing records available
+                          </span>
+                          <span style={{ fontSize: '0.825rem' }}>
+                            {classSummaries.length === 0
+                              ? 'No classes or student billing configured yet.'
+                              : 'No classes match the selected filter criteria.'}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    classSummaries.map((item) => (
-                      <tr
-                        key={item.className}
-                        style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
-                        onClick={() => handleOpenClassDetails(item.className)}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
-                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
-                      >
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>
-                          {item.sNo}
+                    filteredClassSummaries.map((item, idx) => {
+                      const billed = item.totalAmount || 0;
+                      const paid = item.totalPaidAmount || 0;
+                      const outstanding = item.totalOutstandingAmount || 0;
+                      const pct = billed > 0 ? Math.min(100, (paid / billed) * 100) : 0;
+
+                      return (
+                        <tr
+                          key={item.className || idx}
+                          style={{ transition: 'background-color 0.12s ease' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                        >
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.825rem' }}>
+                            {item.sNo || idx + 1}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                            <span
+                              style={{
+                                backgroundColor: '#f1f5f9',
+                                color: '#1e293b',
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '4px',
+                                fontSize: '0.85rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {item.className}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-main)' }}>
+                            {item.totalStudents || 0}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                            {formatCurrency(billed)}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600, color: '#047857', fontVariantNumeric: 'tabular-nums' }}>
+                            {formatCurrency(paid)}
+                          </td>
+                          <td
+                            style={{
+                              padding: '0.85rem 1rem',
+                              textAlign: 'right',
+                              fontWeight: 600,
+                              color: outstanding > 0 ? '#b91c1c' : '#047857',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {formatCurrency(outstanding)}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+                              <div
+                                style={{
+                                  width: '50px',
+                                  height: '6px',
+                                  backgroundColor: '#e2e8f0',
+                                  borderRadius: '9999px',
+                                  overflow: 'hidden',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${pct}%`,
+                                    height: '100%',
+                                    backgroundColor: pct >= 100 ? '#10b981' : '#f59e0b',
+                                  }}
+                                />
+                              </div>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600, minWidth: '36px', textAlign: 'right' }}>
+                                {pct.toFixed(0)}%
+                              </span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            {getClassStatusBadge(item)}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{
+                                  padding: '0.25rem 0.6rem',
+                                  fontSize: '0.775rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.2rem',
+                                  fontWeight: 600,
+                                  color: 'var(--primary)',
+                                }}
+                                onClick={() => handleOpenClassDetails(item.className)}
+                              >
+                                View <ChevronRight size={13} />
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  fontSize: '0.775rem',
+                                  color: 'var(--text-muted)',
+                                }}
+                                title={`Upload Excel for ${item.className}`}
+                                onClick={() => handleOpenBulkForClass(item.className)}
+                              >
+                                <Upload size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* SECTION 4 — RECENT PAYMENTS */}
+          <div
+            className="card"
+            style={{
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: '#ffffff',
+              boxShadow: 'var(--shadow-sm)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: '#ffffff',
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CreditCard size={17} style={{ color: '#047857' }} />
+                Recent Payments
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Latest transactions
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                  onClick={loadRecentPayments}
+                  disabled={loadingRecentPayments}
+                >
+                  <RotateCcw size={12} className={loadingRecentPayments ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </div>
+
+            <div className="table-responsive">
+              <table className="table" style={{ margin: 0 }}>
+                <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <tr>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Student</th>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Class</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Amount</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Payment Date</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Method</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loadingRecentPayments ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                          <RotateCcw size={18} className="animate-spin text-primary" />
+                          <span style={{ fontSize: '0.85rem' }}>Loading recent transactions...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : recentPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                          <CreditCard size={28} style={{ opacity: 0.35 }} />
+                          <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                            No recent payments recorded
+                          </span>
+                          <span style={{ fontSize: '0.8rem' }}>Payments collected will appear here automatically.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    recentPayments.map((p) => (
+                      <tr key={p.id}>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.85rem' }}>
+                            {p.studentName || 'Student #' + p.studentId}
+                          </div>
+                          {p.admissionNumber && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              Adm: {p.admissionNumber}
+                            </div>
+                          )}
                         </td>
-                        <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.825rem', color: 'var(--text-main)' }}>
                           <span
                             style={{
-                              backgroundColor: '#eef2ff',
-                              color: 'var(--primary)',
-                              padding: '0.25rem 0.65rem',
-                              borderRadius: '6px',
+                              backgroundColor: '#f1f5f9',
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '3px',
+                              fontSize: '0.75rem',
                               fontWeight: 600,
-                              fontSize: '0.9rem',
                             }}
                           >
-                            {item.className}
+                            {p.className || '—'}
                           </span>
                         </td>
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 600 }}>
-                          {item.totalStudents}
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums', fontSize: '0.875rem' }}>
+                          {formatCurrency(p.amountPaid)}
                         </td>
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600 }}>
-                          {formatCurrency(item.totalAmount)}
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
+                          {formatDate(p.paymentDate)}
                         </td>
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
-                          {formatCurrency(item.totalPaidAmount)}
-                        </td>
-                        <td
-                          style={{
-                            padding: '0.85rem 1rem',
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            color: item.totalOutstandingAmount > 0 ? '#dc2626' : '#16a34a',
-                          }}
-                        >
-                          {formatCurrency(item.totalOutstandingAmount)}
-                        </td>
-                        <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span
                             style={{
-                              padding: '0.3rem 0.75rem',
-                              fontSize: '0.8rem',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '3px',
+                              fontSize: '0.72rem',
                               fontWeight: 600,
-                              color: 'var(--primary)',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenClassDetails(item.className);
+                              backgroundColor: '#e0f2fe',
+                              color: '#0369a1',
+                              textTransform: 'uppercase',
                             }}
                           >
-                            View <ChevronRight size={14} />
-                          </button>
+                            {p.paymentMethod || 'ONLINE'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span
+                            style={{
+                              padding: '0.15rem 0.5rem',
+                              borderRadius: '3px',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              backgroundColor: '#ecfdf5',
+                              color: '#047857',
+                            }}
+                          >
+                            Paid
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '220px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {p.note || '—'}
                         </td>
                       </tr>
                     ))
@@ -564,19 +1259,19 @@ export const FeesPage = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 2. SELECTED CLASS STUDENT BILLING VIEW (SCREENSHOT 1 & SCREENSHOT 2) */}
+      {/* 2. SELECTED CLASS STUDENT BILLING VIEW (CLASS DETAILS) */}
       {/* ========================================================================= */}
       {view === 'class-details' && (
         <div>
           {/* Breadcrumb & Top Bar */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+          <div style={{ marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
               <button
                 type="button"
                 onClick={handleBackToClasses}
                 style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontWeight: 600 }}
               >
-                Billing
+                Finance
               </button>
               <span>/</span>
               <button
@@ -584,7 +1279,7 @@ export const FeesPage = () => {
                 onClick={handleBackToClasses}
                 style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontWeight: 600 }}
               >
-                Class Summary
+                Billing & Fee Management
               </button>
               <span>/</span>
               <span style={{ color: 'var(--text-main)', fontWeight: 700 }}>{selectedClass}</span>
@@ -599,7 +1294,7 @@ export const FeesPage = () => {
                 gap: '1rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                 <button
                   type="button"
                   onClick={handleBackToClasses}
@@ -608,37 +1303,38 @@ export const FeesPage = () => {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.4rem',
-                    padding: '0.5rem 0.85rem',
-                    fontSize: '0.85rem',
+                    padding: '0.45rem 0.8rem',
+                    fontSize: '0.825rem',
                   }}
                 >
-                  <ArrowLeft size={16} /> Back to Summary
+                  <ArrowLeft size={15} /> Back to Summary
                 </button>
                 <div>
-                  <h1 style={{ fontSize: '1.65rem', fontWeight: 700, margin: 0 }}>
-                    {selectedClass} Student Billing
+                  <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
+                    {selectedClass} — Student Billing Records
                   </h1>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', margin: '2px 0 0' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.825rem', margin: '2px 0 0' }}>
                     Active enrolled students in {selectedClass} and detailed fee breakdown.
                   </p>
                 </div>
               </div>
 
-              {/* Requirement 8: Bulk Upload & Add Billing for Individual */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* Quick Actions for Class */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <button
                   type="button"
-                  onClick={() => setIsBulkModalOpen(true)}
+                  onClick={() => handleOpenBulkForClass(selectedClass)}
                   className="btn btn-secondary"
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.5rem',
+                    gap: '0.4rem',
                     fontWeight: 600,
-                    padding: '0.55rem 1.15rem',
+                    padding: '0.5rem 0.95rem',
+                    fontSize: '0.825rem',
                   }}
                 >
-                  <Upload size={17} /> Bulk Upload
+                  <Upload size={15} /> Bulk Upload
                 </button>
 
                 <button
@@ -651,100 +1347,154 @@ export const FeesPage = () => {
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.5rem',
+                    gap: '0.4rem',
                     fontWeight: 600,
-                    padding: '0.55rem 1.15rem',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.825rem',
                   }}
                 >
-                  <Plus size={17} /> Add Billing for Individual
+                  <Plus size={15} /> Add Individual Billing
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Selected Class Metrics Strip */}
+          {/* Class Error Banner */}
+          {classDetailsError && (
+            <div
+              style={{
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: 'var(--radius-md)',
+                padding: '0.85rem 1.25rem',
+                marginBottom: '1.25rem',
+                color: '#991b1b',
+                fontSize: '0.875rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{classDetailsError}</span>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => loadStudentBillingForClass(selectedClass)}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Selected Class Compact Summary Strip */}
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
               gap: '1rem',
-              marginBottom: '1.5rem',
+              marginBottom: '1.25rem',
             }}
           >
-            <div className="card" style={{ padding: '1rem 1.25rem', borderLeft: '4px solid #4f46e5' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Active Students ({selectedClass})
+            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Enrolled Students
               </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
+              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
                 {classMetrics.count}
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1rem 1.25rem', borderLeft: '4px solid #0ea5e9' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Class Total Billed
+            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Total Invoiced
               </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0ea5e9', marginTop: '0.2rem' }}>
+              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
                 {formatCurrency(classMetrics.billed)}
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1rem 1.25rem', borderLeft: '4px solid #10b981' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Class Total Paid
+            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Total Collected
               </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10b981', marginTop: '0.2rem' }}>
+              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#047857', marginTop: '0.2rem' }}>
                 {formatCurrency(classMetrics.paid)}
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1rem 1.25rem', borderLeft: '4px solid #ef4444' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Class Total Outstanding
+            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Outstanding Dues
               </div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ef4444', marginTop: '0.2rem' }}>
+              <div
+                style={{
+                  fontSize: '1.35rem',
+                  fontWeight: 700,
+                  color: classMetrics.outstanding > 0 ? '#b91c1c' : '#047857',
+                  marginTop: '0.2rem',
+                }}
+              >
                 {formatCurrency(classMetrics.outstanding)}
               </div>
             </div>
           </div>
 
-          {/* Search & Filter Bar (Requirement 29) */}
+          {/* Search & Status Filter within Class */}
           <div
+            className="card"
             style={{
-              display: 'flex',
-              gap: '1rem',
+              padding: '0.85rem 1.25rem',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: '#ffffff',
               marginBottom: '1.25rem',
+              display: 'flex',
               alignItems: 'center',
+              justifyContent: 'space-between',
               flexWrap: 'wrap',
+              gap: '0.75rem',
             }}
           >
-            <div style={{ position: 'relative', flex: 1, minWidth: '280px' }}>
+            <div style={{ position: 'relative', width: '280px' }}>
+              <Search
+                size={14}
+                style={{
+                  position: 'absolute',
+                  left: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                }}
+              />
               <input
                 type="text"
+                placeholder="Search student or roll no..."
                 className="form-input"
-                placeholder={`Search by student name or admission number in ${selectedClass}...`}
-                value={searchTerm}
+                style={{
+                  paddingLeft: '2.2rem',
+                  paddingRight: '0.75rem',
+                  fontSize: '0.825rem',
+                  height: '34px',
+                }}
+                value={classSearchTerm}
                 onChange={(e) => {
-                  setSearchTerm(e.target.value);
+                  setClassSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                style={{ paddingLeft: '2.4rem', borderRadius: '2rem', height: '42px', width: '100%' }}
-              />
-              <Search
-                size={18}
-                style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
               />
             </div>
 
-            <div style={{ width: '180px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                Status:
+              </span>
               <select
-                className="form-input"
-                value={statusFilter}
+                className="form-select"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
+                value={classStudentStatusFilter}
                 onChange={(e) => {
-                  setStatusFilter(e.target.value);
+                  setClassStudentStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                style={{ borderRadius: '2rem', height: '42px' }}
               >
                 <option value="All">All Statuses</option>
                 <option value="Settled">Settled</option>
@@ -755,253 +1505,218 @@ export const FeesPage = () => {
             </div>
           </div>
 
-          {/* Detailed Student Billing Table (Screenshot 1 & Screenshot 2) */}
-          <div className="card" style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div className="table-responsive" style={{ overflowX: 'auto' }}>
-              <table className="table" style={{ margin: 0, minWidth: '1050px' }}>
-                <thead style={{ backgroundColor: '#f0f9ff', borderBottom: '1px solid var(--border-subtle)' }}>
+          {/* Student Billing Table */}
+          <div
+            className="card"
+            style={{
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              backgroundColor: '#ffffff',
+              boxShadow: 'var(--shadow-sm)',
+              overflow: 'hidden',
+            }}
+          >
+            <div className="table-responsive">
+              <table className="table" style={{ margin: 0 }}>
+                <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle)' }}>
                   <tr>
-                    <th style={{ padding: '0.85rem 0.75rem', width: '55px', textAlign: 'center' }}>S.No</th>
-                    <th style={{ padding: '0.85rem 0.75rem' }}>Student Name</th>
-                    <th style={{ padding: '0.85rem 0.75rem' }}>Class</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Term Fees - 1</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Term Fees - 2</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Term Fees - 3</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Bus Fees</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Exam Fees</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Outstanding Amount</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Paid Amount</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>Total Amount</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>Status</th>
-                    <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center', width: '80px' }}>Details</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '40px' }}></th>
+                    <th style={{ padding: '0.75rem 1rem', width: '50px', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>#</th>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Student Name</th>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Roll / Adm No</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Billed</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Paid</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Outstanding</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '120px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '220px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingClassStudents ? (
                     <tr>
-                      <td colSpan="13" style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
-                        Fetching active student billing records for {selectedClass}...
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                          <RotateCcw size={22} className="animate-spin text-primary" />
+                          <span style={{ fontSize: '0.9rem' }}>Loading class student billing records...</span>
+                        </div>
                       </td>
                     </tr>
                   ) : paginatedBillingRows.length === 0 ? (
                     <tr>
-                      <td colSpan="13" style={{ textAlign: 'center', padding: '3.5rem', color: 'var(--text-muted)' }}>
-                        No students matching your search criteria in {selectedClass}.
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                          <Users size={32} style={{ opacity: 0.35 }} />
+                          <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                            No student billing records found
+                          </span>
+                          <span style={{ fontSize: '0.825rem' }}>
+                            {studentBillingRows.length === 0
+                              ? `No active students are currently enrolled in ${selectedClass}.`
+                              : 'No students match your filter criteria.'}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    paginatedBillingRows.map((student) => {
-                      const isExpanded = !!expandedRows[student.sNo];
+                    paginatedBillingRows.map((row) => {
+                      const isExpanded = !!expandedRows[row.sNo];
                       return (
-                        <React.Fragment key={student.studentId || student.sNo}>
+                        <React.Fragment key={row.sNo || row.studentId}>
                           <tr
-                            style={{
-                              backgroundColor: isExpanded ? '#f8fafc' : '#ffffff',
-                              borderBottom: isExpanded ? 'none' : '1px solid var(--border-subtle)',
-                              transition: 'background-color 0.15s ease',
-                            }}
+                            style={{ transition: 'background-color 0.12s ease' }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
                           >
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>
-                              {student.sNo}
+                            <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px' }}
+                                onClick={() => toggleRowExpand(row.sNo)}
+                                title={isExpanded ? 'Hide breakdown' : 'View breakdown'}
+                              >
+                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </button>
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', fontWeight: 700 }}>
-                              <div>{student.studentName}</div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>
-                                {student.admissionNumber || `ID: ${student.studentId}`}
-                              </div>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                              {row.sNo}
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                              {student.className}
+                            <td style={{ padding: '0.75rem 1rem', fontWeight: 600, color: 'var(--text-main)', fontSize: '0.85rem' }}>
+                              {row.studentName}
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>
-                              {formatCurrency(student.termFees1)}
+                            <td style={{ padding: '0.75rem 1rem', color: 'var(--text-muted)', fontSize: '0.825rem' }}>
+                              {row.admissionNumber || '—'}
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>
-                              {formatCurrency(student.termFees2)}
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', fontSize: '0.85rem' }}>
+                              {formatCurrency(row.totalAmount)}
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>
-                              {formatCurrency(student.termFees3)}
-                            </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>
-                              {formatCurrency(student.busFees)}
-                            </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right' }}>
-                              {formatCurrency(student.examFees)}
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#047857', fontVariantNumeric: 'tabular-nums', fontSize: '0.85rem' }}>
+                              {formatCurrency(row.paidAmount)}
                             </td>
                             <td
                               style={{
-                                padding: '0.85rem 0.75rem',
+                                padding: '0.75rem 1rem',
                                 textAlign: 'right',
-                                fontWeight: 700,
-                                color: student.outstandingAmount > 0 ? '#dc2626' : '#16a34a',
+                                fontWeight: 600,
+                                color: (row.outstandingAmount || 0) > 0 ? '#b91c1c' : '#047857',
+                                fontVariantNumeric: 'tabular-nums',
+                                fontSize: '0.85rem',
                               }}
                             >
-                              {formatCurrency(student.outstandingAmount)}
+                              {formatCurrency(row.outstandingAmount)}
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
-                              {formatCurrency(student.paidAmount)}
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                              {renderStudentStatusBadge(row.status)}
                             </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'right', fontWeight: 700 }}>
-                              {formatCurrency(student.totalAmount)}
-                            </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>
-                              {renderStatusBadge(student.status)}
-                            </td>
-                            <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => toggleRowExpand(student.sNo)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  color: 'var(--text-main)',
-                                  padding: '4px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}
-                                title={isExpanded ? 'Collapse Details' : 'Expand Details'}
-                              >
-                                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                              </button>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                                {/* Record Payment */}
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  style={{
+                                    padding: '0.2rem 0.55rem',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    color: (row.outstandingAmount || 0) > 0 ? '#047857' : 'var(--text-muted)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem',
+                                  }}
+                                  disabled={!row.feeId || (row.outstandingAmount || 0) <= 0}
+                                  onClick={() => openPaymentModal(row)}
+                                  title="Record Payment"
+                                >
+                                  <CreditCard size={12} /> Pay
+                                </button>
+
+                                {/* Payment History */}
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  style={{
+                                    padding: '0.2rem 0.45rem',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-muted)',
+                                  }}
+                                  onClick={() => openHistoryModal(row)}
+                                  title="Payment History"
+                                >
+                                  <History size={12} />
+                                </button>
+
+                                {/* Edit Billing */}
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-secondary"
+                                  style={{
+                                    padding: '0.2rem 0.45rem',
+                                    fontSize: '0.75rem',
+                                    color: 'var(--primary)',
+                                  }}
+                                  onClick={() => {
+                                    setIndividualModalStudent(row);
+                                    setIsIndividualModalOpen(true);
+                                  }}
+                                  title="Edit Fee Structure"
+                                >
+                                  Edit
+                                </button>
+                              </div>
                             </td>
                           </tr>
 
-                          {/* ========================================================================= */}
-                          {/* EXPANDABLE ROW DETAILS (EXACT BEHAVIOR & DESIGN FROM SCREENSHOT 2) */}
-                          {/* ========================================================================= */}
+                          {/* Expandable Breakdown Drawer */}
                           {isExpanded && (
-                            <tr style={{ backgroundColor: '#ffffff', borderBottom: '1px solid var(--border-subtle)' }}>
-                              <td colSpan="13" style={{ padding: '0.75rem 1.5rem 1.5rem' }}>
+                            <tr style={{ backgroundColor: '#f8fafc' }}>
+                              <td colSpan="9" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-subtle)' }}>
                                 <div
                                   style={{
-                                    border: '1px solid #e2e8f0',
-                                    borderRadius: '8px',
-                                    overflow: 'hidden',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                                    gap: '0.75rem',
+                                    backgroundColor: '#ffffff',
+                                    padding: '0.85rem 1.25rem',
+                                    borderRadius: 'var(--radius-sm)',
+                                    border: '1px solid var(--border-subtle)',
                                   }}
                                 >
-                                  {/* Sub-header title */}
-                                  <div
-                                    style={{
-                                      padding: '0.65rem 1rem',
-                                      fontWeight: 600,
-                                      fontSize: '0.9rem',
-                                      color: 'var(--text-main)',
-                                      backgroundColor: '#ffffff',
-                                      borderBottom: '1px solid #e2e8f0',
-                                    }}
-                                  >
-                                    Outstanding - Payers
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                      Term 1
+                                    </span>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{formatCurrency(row.termFees1)}</div>
                                   </div>
-
-                                  {/* Subtable matching Screenshot 2 column structure */}
-                                  <table className="table" style={{ margin: 0, fontSize: '0.825rem' }}>
-                                    <thead style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>
-                                      <tr>
-                                        <th style={{ padding: '0.55rem 0.85rem', fontWeight: 600 }}>PAYER NAME</th>
-                                        <th style={{ padding: '0.55rem 0.85rem', textAlign: 'right', fontWeight: 600 }}>RECEIVABLE</th>
-                                        <th style={{ padding: '0.55rem 0.85rem', textAlign: 'right', fontWeight: 600 }}>RECEIPTED</th>
-                                        <th style={{ padding: '0.55rem 0.85rem', textAlign: 'right', fontWeight: 600 }}>REFUND</th>
-                                        <th style={{ padding: '0.55rem 0.85rem', textAlign: 'right', fontWeight: 600 }}>DISCOUNT</th>
-                                        <th style={{ padding: '0.55rem 0.85rem', textAlign: 'right', fontWeight: 600 }}>OUTSTANDING AMOUNT</th>
-                                        <th style={{ padding: '0.55rem 0.85rem', textAlign: 'center', fontWeight: 600 }}>INVOICE NO.</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      <tr style={{ backgroundColor: '#f0f9ff' }}>
-                                        <td style={{ padding: '0.65rem 0.85rem', fontWeight: 600 }}>
-                                          Student ({student.studentName})
-                                        </td>
-                                        <td style={{ padding: '0.65rem 0.85rem', textAlign: 'right', fontWeight: 600 }}>
-                                          {formatCurrency(student.totalAmount)}
-                                        </td>
-                                        <td style={{ padding: '0.65rem 0.85rem', textAlign: 'right', fontWeight: 600, color: '#16a34a' }}>
-                                          {formatCurrency(student.paidAmount)}
-                                        </td>
-                                        <td style={{ padding: '0.65rem 0.85rem', textAlign: 'right', color: 'var(--text-muted)' }}>
-                                          ₹0.00
-                                        </td>
-                                        <td style={{ padding: '0.65rem 0.85rem', textAlign: 'right', color: 'var(--text-muted)' }}>
-                                          ₹0.00
-                                        </td>
-                                        <td
-                                          style={{
-                                            padding: '0.65rem 0.85rem',
-                                            textAlign: 'right',
-                                            fontWeight: 700,
-                                            color: student.outstandingAmount > 0 ? '#dc2626' : '#16a34a',
-                                          }}
-                                        >
-                                          {formatCurrency(student.outstandingAmount)}
-                                        </td>
-                                        <td style={{ padding: '0.65rem 0.85rem', textAlign: 'center', fontWeight: 600 }}>
-                                          {student.feeId ? `INV-${student.feeId}` : '—'}
-                                        </td>
-                                      </tr>
-                                    </tbody>
-                                  </table>
-
-                                  {/* Quick Action Buttons on Expanded Row */}
-                                  <div
-                                    style={{
-                                      padding: '0.65rem 1rem',
-                                      backgroundColor: '#ffffff',
-                                      display: 'flex',
-                                      justifyContent: 'flex-end',
-                                      alignItems: 'center',
-                                      gap: '0.75rem',
-                                      borderTop: '1px solid #e2e8f0',
-                                    }}
-                                  >
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary"
-                                      onClick={() => openHistoryModal(student)}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.35rem',
-                                        fontSize: '0.775rem',
-                                        padding: '0.35rem 0.75rem',
-                                      }}
-                                    >
-                                      <History size={14} /> Payment History
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      className="btn btn-secondary"
-                                      onClick={() => {
-                                        setIndividualModalStudent(student);
-                                        setIsIndividualModalOpen(true);
-                                      }}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.35rem',
-                                        fontSize: '0.775rem',
-                                        padding: '0.35rem 0.75rem',
-                                      }}
-                                    >
-                                      <DollarSign size={14} /> Edit Billing Breakdown
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      className="btn btn-primary"
-                                      onClick={() => openPaymentModal(student)}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.35rem',
-                                        fontSize: '0.775rem',
-                                        padding: '0.35rem 0.75rem',
-                                      }}
-                                    >
-                                      <CreditCard size={14} /> Record Payment
-                                    </button>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                      Term 2
+                                    </span>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{formatCurrency(row.termFees2)}</div>
+                                  </div>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                      Term 3
+                                    </span>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{formatCurrency(row.termFees3)}</div>
+                                  </div>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                      Bus Fee
+                                    </span>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{formatCurrency(row.busFees)}</div>
+                                  </div>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                      Exam Fee
+                                    </span>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{formatCurrency(row.examFees)}</div>
+                                  </div>
+                                  <div>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                                      Recorded Receipts
+                                    </span>
+                                    <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--primary)' }}>
+                                      {row.payments?.length || 0} transaction(s)
+                                    </div>
                                   </div>
                                 </div>
                               </td>
@@ -1015,225 +1730,205 @@ export const FeesPage = () => {
               </table>
             </div>
 
-            {/* Pagination (Requirement 30) */}
-            <div
-              style={{
-                padding: '0.9rem 1.5rem',
-                borderTop: '1px solid var(--border-subtle)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: '#ffffff',
-                flexWrap: 'wrap',
-                gap: '0.5rem',
-              }}
-            >
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Showing{' '}
-                <strong>
-                  {filteredBillingRows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
-                </strong>
-                –
-                <strong>
-                  {Math.min(currentPage * pageSize, filteredBillingRows.length)}
-                </strong>{' '}
-                of <strong>{filteredBillingRows.length}</strong> active students
-              </div>
-
-              {totalPages > 1 && (
-                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div
+                style={{
+                  padding: '0.75rem 1.25rem',
+                  borderTop: '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Page {currentPage} of {totalPages} ({filteredBillingRows.length} total students)
+                </div>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
                   <button
-                    className="btn btn-secondary"
-                    disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage((p) => p - 1)}
-                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.825rem' }}
+                    className="btn btn-secondary btn-sm"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   >
                     Previous
                   </button>
-                  <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)', margin: '0 0.4rem' }}>
-                    Page {currentPage} of {totalPages}
-                  </span>
                   <button
-                    className="btn btn-secondary"
-                    disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage((p) => p + 1)}
-                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.825rem' }}
+                    className="btn btn-secondary btn-sm"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   >
                     Next
                   </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 3. MODALS */}
+      {/* MODALS */}
       {/* ========================================================================= */}
+
       {/* Bulk Upload Modal */}
       <BulkBillingUploadModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
-        selectedClass={selectedClass}
+        selectedClass={bulkModalClass || selectedClass}
         onSuccess={() => {
-          loadStudentBillingForClass(selectedClass);
+          loadClassSummaries();
+          if (selectedClass) loadStudentBillingForClass(selectedClass);
+          loadRecentPayments();
         }}
       />
 
       {/* Individual Billing Modal */}
       <IndividualBillingModal
         isOpen={isIndividualModalOpen}
-        onClose={() => {
-          setIsIndividualModalOpen(false);
-          setIndividualModalStudent(null);
-        }}
-        selectedClass={selectedClass}
+        onClose={() => setIsIndividualModalOpen(false)}
+        selectedClass={selectedClass || (distinctClasses[0] || 'Class 10')}
         activeStudents={activeStudentsInClass}
         existingBillingRows={studentBillingRows}
         initialStudent={individualModalStudent}
         onSuccess={() => {
-          loadStudentBillingForClass(selectedClass);
+          loadClassSummaries();
+          if (selectedClass) loadStudentBillingForClass(selectedClass);
+          loadRecentPayments();
         }}
       />
 
       {/* Record Payment Modal */}
-      {paymentModal && (
-        <Modal
-          isOpen={paymentModal}
-          onClose={() => {
-            setPaymentModal(false);
-            setSelectedFeeForPayment(null);
-          }}
-          title={`Record Payment — ${selectedFeeForPayment?.studentName || ''}`}
-        >
-          <form onSubmit={handleRecordPaymentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Outstanding Due:</div>
-              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#dc2626' }}>
-                {formatCurrency(selectedFeeForPayment?.outstandingAmount || 0)}
-              </div>
+      <Modal
+        isOpen={paymentModal}
+        onClose={() => setPaymentModal(false)}
+        title="Record Payment"
+        footer={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setPaymentModal(false)}>
+              Cancel
+            </button>
+            <button type="submit" form="recordPaymentForm" className="btn btn-primary">
+              Save Payment
+            </button>
+          </>
+        }
+      >
+        <form id="recordPaymentForm" onSubmit={handleRecordPaymentSubmit}>
+          <div style={{ padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+              {selectedFeeForPayment?.studentName}
             </div>
-
-            <div>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Amount Paid (₹) *
-              </label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                max={selectedFeeForPayment?.outstandingAmount || 999999}
-                className="form-control"
-                value={paymentForm.amountPaid}
-                onChange={(e) => setPaymentForm({ ...paymentForm, amountPaid: e.target.value })}
-                required
-              />
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Class: {selectedFeeForPayment?.className} | Adm No: {selectedFeeForPayment?.admissionNumber || '—'}
             </div>
+            <div style={{ marginTop: '0.4rem', fontSize: '0.825rem', fontWeight: 600, color: '#b91c1c' }}>
+              Current Outstanding: {formatCurrency(selectedFeeForPayment?.outstandingAmount)}
+            </div>
+          </div>
 
-            <div>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Payment Date *
-              </label>
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label className="form-label">Payment Amount (₹) *</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              max={selectedFeeForPayment?.outstandingAmount || 999999}
+              className="form-control"
+              required
+              value={paymentForm.amountPaid}
+              onChange={(e) => setPaymentForm({ ...paymentForm, amountPaid: e.target.value })}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">Payment Date *</label>
               <input
                 type="date"
                 className="form-control"
+                required
                 value={paymentForm.paymentDate}
                 onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
-                required
               />
             </div>
-
-            <div>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Payment Method
-              </label>
+            <div className="form-group">
+              <label className="form-label">Payment Method *</label>
               <select
                 className="form-control"
                 value={paymentForm.paymentMethod}
                 onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
               >
-                <option value="ONLINE">ONLINE (UPI / NetBanking / Card)</option>
-                <option value="CASH">CASH</option>
-                <option value="BANK_TRANSFER">BANK TRANSFER / NEFT</option>
-                <option value="CHEQUE">CHEQUE</option>
+                <option value="ONLINE">Online / UPI</option>
+                <option value="CASH">Cash</option>
+                <option value="BANK">Bank Transfer</option>
+                <option value="CHEQUE">Cheque</option>
               </select>
             </div>
+          </div>
 
-            <div>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                Transaction Note / Reference
-              </label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. UTR / Receipt No."
-                value={paymentForm.note}
-                onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setPaymentModal(false)}
-              >
-                Cancel
-              </button>
-              <button type="submit" className="btn btn-primary">
-                Confirm Payment
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+          <div className="form-group">
+            <label className="form-label">Note / Receipt Reference</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="e.g. Receipt #1042 / UPI Transaction ID"
+              value={paymentForm.note}
+              onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
+            />
+          </div>
+        </form>
+      </Modal>
 
       {/* Payment History Modal */}
-      {historyModal && (
-        <Modal
-          isOpen={historyModal}
-          onClose={() => setHistoryModal(false)}
-          title={`Payment Audit History — ${historyFee?.studentName || ''}`}
-        >
-          {loadingHistory ? (
-            <p style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>Loading payments...</p>
-          ) : paymentsList.length === 0 ? (
-            <p style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-              No payments recorded yet for this billing cycle.
-            </p>
-          ) : (
-            <div className="table-responsive">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Method</th>
-                    <th>Amount</th>
-                    <th>Note</th>
+      <Modal
+        isOpen={historyModal}
+        onClose={() => setHistoryModal(false)}
+        title="Payment History"
+        footer={
+          <button type="button" className="btn btn-secondary" onClick={() => setHistoryModal(false)}>
+            Close
+          </button>
+        }
+      >
+        <div style={{ marginBottom: '1rem' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            {historyFee?.studentName}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Class: {historyFee?.className} | Billed: {formatCurrency(historyFee?.totalAmount)} | Paid: {formatCurrency(historyFee?.paidAmount)}
+          </div>
+        </div>
+
+        {loadingHistory ? (
+          <p style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>Loading payments...</p>
+        ) : paymentsList.length === 0 ? (
+          <p style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>No payment transactions recorded for this student.</p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table" style={{ fontSize: '0.825rem' }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paymentsList.map((p) => (
+                  <tr key={p.id}>
+                    <td>{formatDate(p.paymentDate)}</td>
+                    <td style={{ fontWeight: 600, color: '#047857' }}>{formatCurrency(p.amountPaid)}</td>
+                    <td><span className="badge badge-primary">{p.paymentMethod || 'ONLINE'}</span></td>
+                    <td style={{ color: 'var(--text-muted)' }}>{p.note || '—'}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {paymentsList.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.paymentDate}</td>
-                      <td>
-                        <span className="badge" style={{ backgroundColor: '#eef2ff', color: 'var(--primary)' }}>
-                          {p.paymentMethod}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: '#16a34a' }}>
-                        {formatCurrency(p.amountPaid)}
-                      </td>
-                      <td style={{ color: 'var(--text-muted)' }}>{p.note || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Modal>
-      )}
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

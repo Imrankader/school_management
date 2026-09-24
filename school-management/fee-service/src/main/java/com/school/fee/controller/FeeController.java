@@ -4,6 +4,7 @@ import com.school.common.dto.ApiResponse;
 import com.school.fee.dto.BulkUploadBillingResult;
 import com.school.fee.dto.ClassBillingSummaryDTO;
 import com.school.fee.dto.FeeDTO;
+import com.school.fee.dto.RecentPaymentDTO;
 import com.school.fee.dto.StudentBillingRowDTO;
 import com.school.fee.entity.Payment;
 import com.school.fee.service.FeeExcelService;
@@ -125,6 +126,14 @@ public class FeeController {
     @GetMapping("/student/{studentId}/payments")
     public ResponseEntity<ApiResponse<List<Payment>>> getPaymentsByStudent(@PathVariable("studentId") Long studentId) {
         List<Payment> payments = feeService.getPaymentsByStudent(studentId);
+        return ResponseEntity.ok(ApiResponse.success(payments));
+    }
+
+    /** GET /api/fees/payments/recent — Recent payments with student and class information */
+    @GetMapping("/payments/recent")
+    public ResponseEntity<ApiResponse<List<RecentPaymentDTO>>> getRecentPayments(
+            @RequestParam(value = "limit", defaultValue = "10") int limit) {
+        List<RecentPaymentDTO> payments = feeService.getRecentPayments(limit);
         return ResponseEntity.ok(ApiResponse.success(payments));
     }
 }

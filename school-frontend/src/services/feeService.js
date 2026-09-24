@@ -60,5 +60,11 @@ export const feeService = {
   getPaymentsByStudent: async (studentId) => {
     const response = await api.get(`/api/fees/student/${studentId}/payments`);
     return response.data;
+  },
+
+  // Recent Payments for ERP Finance Management
+  getRecentPayments: async (limit = 10) => {
+    const response = await api.get(`/api/fees/payments/recent?limit=${limit}`);
+    return response.data;
   }
 };

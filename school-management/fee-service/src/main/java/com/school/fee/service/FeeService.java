@@ -5,6 +5,7 @@ import com.school.common.exception.BadRequestException;
 import com.school.common.exception.ResourceNotFoundException;
 import com.school.fee.dto.ClassBillingSummaryDTO;
 import com.school.fee.dto.FeeDTO;
+import com.school.fee.dto.RecentPaymentDTO;
 import com.school.fee.dto.StudentBillingRowDTO;
 import com.school.fee.dto.StudentInfoDTO;
 import com.school.fee.entity.Fee;
@@ -38,24 +39,53 @@ public class FeeService {
      * Calculated dynamically from active students and their fee records.
      */
     public List<ClassBillingSummaryDTO> getClassBillingSummaries() {
-        Map<String, List<StudentInfoDTO>> groupedStudents = studentServiceClient.getActiveStudentsGroupedByClass();
-        List<String> classes = new ArrayList<>(groupedStudents.keySet());
-
-        if (classes.isEmpty()) {
-            classes = studentServiceClient.getDistinctClasses();
+        Map<String, List<StudentInfoDTO>> groupedStudents;
+        try {
+            groupedStudents = studentServiceClient.getActiveStudentsGroupedByClass();
+        } catch (Exception e) {
+            log.warn("Failed to fetch active students grouped by class: {}", e.getMessage());
+            groupedStudents = Collections.emptyMap();
         }
-        if (classes.isEmpty()) {
+        if (groupedStudents == null) {
+            groupedStudents = Collections.emptyMap();
+        }
+
+        Set<String> classSet = new LinkedHashSet<>();
+        for (String c : groupedStudents.keySet()) {
+            if (c != null && !c.trim().isEmpty()) {
+                classSet.add(c.trim());
+            }
+        }
+
+        if (classSet.isEmpty()) {
+            try {
+                List<String> distinctClasses = studentServiceClient.getDistinctClasses();
+                if (distinctClasses != null) {
+                    for (String c : distinctClasses) {
+                        if (c != null && !c.trim().isEmpty()) {
+                            classSet.add(c.trim());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch distinct classes from student service: {}", e.getMessage());
+            }
+        }
+
+        if (classSet.isEmpty()) {
             // Fallback: distinct classes from fees table
-            classes = feeRepository.findAll().stream()
-                    .map(Fee::getClassName)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .sorted()
-                    .toList();
+            try {
+                feeRepository.findAll().stream()
+                        .map(Fee::getClassName)
+                        .filter(c -> c != null && !c.trim().isEmpty())
+                        .map(String::trim)
+                        .forEach(classSet::add);
+            } catch (Exception e) {
+                log.warn("Failed to fetch fallback classes from fee repository: {}", e.getMessage());
+            }
         }
 
-        // Natural sort order for classes (e.g. LKG, UKG, Class 1, Class 2, ... Class 10, Class 11, Class 12)
-        List<String> sortedClasses = new ArrayList<>(classes);
+        List<String> sortedClasses = new ArrayList<>(classSet);
         sortedClasses.sort(this::naturalClassCompare);
 
         List<ClassBillingSummaryDTO> summaries = new ArrayList<>();
@@ -63,12 +93,22 @@ public class FeeService {
 
         for (String className : sortedClasses) {
             List<StudentInfoDTO> activeStudents = groupedStudents.getOrDefault(className, Collections.emptyList());
-            if (activeStudents.isEmpty()) {
-                activeStudents = studentServiceClient.getActiveStudentsByClass(className);
+            if (activeStudents == null || activeStudents.isEmpty()) {
+                try {
+                    activeStudents = studentServiceClient.getActiveStudentsByClass(className);
+                } catch (Exception e) {
+                    log.warn("Failed to fetch active students for class {}: {}", className, e.getMessage());
+                    activeStudents = Collections.emptyList();
+                }
             }
+            if (activeStudents == null) {
+                activeStudents = Collections.emptyList();
+            }
+
             long totalStudents = activeStudents.size();
 
             Set<Long> activeStudentIds = activeStudents.stream()
+                    .filter(Objects::nonNull)
                     .map(StudentInfoDTO::getId)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
@@ -78,11 +118,32 @@ public class FeeService {
             BigDecimal totalOutstandingAmount = BigDecimal.ZERO;
 
             if (!activeStudentIds.isEmpty()) {
-                List<Fee> fees = feeRepository.findByStudentIdIn(activeStudentIds);
-                for (Fee fee : fees) {
-                    if (fee.getTotalAmount() != null) totalAmount = totalAmount.add(fee.getTotalAmount());
-                    if (fee.getPaidAmount() != null) totalPaidAmount = totalPaidAmount.add(fee.getPaidAmount());
-                    if (fee.getPendingAmount() != null) totalOutstandingAmount = totalOutstandingAmount.add(fee.getPendingAmount());
+                try {
+                    List<Fee> fees = feeRepository.findByStudentIdIn(activeStudentIds);
+                    if (fees != null) {
+                        for (Fee fee : fees) {
+                            if (fee.getTotalAmount() != null) totalAmount = totalAmount.add(fee.getTotalAmount());
+                            if (fee.getPaidAmount() != null) totalPaidAmount = totalPaidAmount.add(fee.getPaidAmount());
+                            if (fee.getPendingAmount() != null) totalOutstandingAmount = totalOutstandingAmount.add(fee.getPendingAmount());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to fetch fees by student IDs for class {}: {}", className, e.getMessage());
+                }
+            } else {
+                // If there are no active students found via client, check if fees exist by className
+                try {
+                    List<Fee> classFees = feeRepository.findByClassName(className);
+                    if (classFees != null && !classFees.isEmpty()) {
+                        totalStudents = classFees.stream().map(Fee::getStudentId).filter(Objects::nonNull).distinct().count();
+                        for (Fee fee : classFees) {
+                            if (fee.getTotalAmount() != null) totalAmount = totalAmount.add(fee.getTotalAmount());
+                            if (fee.getPaidAmount() != null) totalPaidAmount = totalPaidAmount.add(fee.getPaidAmount());
+                            if (fee.getPendingAmount() != null) totalOutstandingAmount = totalOutstandingAmount.add(fee.getPendingAmount());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to fetch class fees for {}: {}", className, e.getMessage());
                 }
             }
 
@@ -101,22 +162,61 @@ public class FeeService {
 
     /**
      * Get detailed student-level billing rows for a specific class.
-     * Strictly includes only ACTIVE students belonging to this class.
+     * Strictly includes only ACTIVE students belonging to this class,
+     * with graceful fallback to existing class fees if student directory service is unavailable.
      */
     public List<StudentBillingRowDTO> getStudentBillingForClass(String className) {
-        List<StudentInfoDTO> activeStudents = studentServiceClient.getActiveStudentsByClass(className);
+        List<StudentInfoDTO> activeStudents;
+        try {
+            activeStudents = studentServiceClient.getActiveStudentsByClass(className);
+        } catch (Exception e) {
+            log.warn("Failed to fetch active students for {}: {}", className, e.getMessage());
+            activeStudents = Collections.emptyList();
+        }
+        if (activeStudents == null) {
+            activeStudents = Collections.emptyList();
+        }
+
+        // If no active students returned from service client, fallback to students found in fees table
+        if (activeStudents.isEmpty()) {
+            try {
+                List<Fee> classFees = feeRepository.findByClassName(className);
+                if (classFees != null && !classFees.isEmpty()) {
+                    activeStudents = classFees.stream()
+                            .filter(f -> f.getStudentId() != null)
+                            .map(f -> StudentInfoDTO.builder()
+                                    .id(f.getStudentId())
+                                    .admissionNumber(f.getAdmissionNumber() != null ? f.getAdmissionNumber() : "ID-" + f.getStudentId())
+                                    .name(f.getStudentName() != null ? f.getStudentName() : "Student #" + f.getStudentId())
+                                    .className(className)
+                                    .isActive(true)
+                                    .build())
+                            .distinct()
+                            .toList();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fallback to class fees for {}: {}", className, e.getMessage());
+            }
+        }
 
         // Fetch existing fees for this class
         Set<Long> studentIds = activeStudents.stream()
+                .filter(Objects::nonNull)
                 .map(StudentInfoDTO::getId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
 
         Map<Long, Fee> feeMap = new HashMap<>();
         if (!studentIds.isEmpty()) {
-            List<Fee> fees = feeRepository.findByStudentIdIn(studentIds);
-            for (Fee f : fees) {
-                feeMap.put(f.getStudentId(), f);
+            try {
+                List<Fee> fees = feeRepository.findByStudentIdIn(studentIds);
+                if (fees != null) {
+                    for (Fee f : fees) {
+                        feeMap.put(f.getStudentId(), f);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch fees for student IDs: {}", e.getMessage());
             }
         }
 
@@ -159,7 +259,11 @@ public class FeeService {
                     status = "unbilled";
                 }
 
-                payments = paymentRepository.findByFeeIdOrderByPaymentDateDesc(fee.getId());
+                try {
+                    payments = paymentRepository.findByFeeIdOrderByPaymentDateDesc(fee.getId());
+                } catch (Exception e) {
+                    payments = Collections.emptyList();
+                }
             }
 
             rows.add(StudentBillingRowDTO.builder()
@@ -353,6 +457,62 @@ public class FeeService {
 
     public List<Payment> getPaymentsByStudent(Long studentId) {
         return paymentRepository.findByStudentIdOrderByPaymentDateDesc(studentId);
+    }
+
+    /**
+     * Fetch recent payments with student name and class details for ERP finance management dashboard.
+     */
+    public List<RecentPaymentDTO> getRecentPayments(int limit) {
+        try {
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                    0,
+                    limit > 0 ? limit : 10,
+                    org.springframework.data.domain.Sort.by("paymentDate").descending().and(org.springframework.data.domain.Sort.by("id").descending())
+            );
+            List<Payment> payments = paymentRepository.findAll(pageable).getContent();
+            if (payments == null || payments.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            Set<Long> feeIds = payments.stream()
+                    .map(Payment::getFeeId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            Map<Long, Fee> feeMap = new HashMap<>();
+            if (!feeIds.isEmpty()) {
+                try {
+                    feeRepository.findAllById(feeIds).forEach(f -> feeMap.put(f.getId(), f));
+                } catch (Exception e) {
+                    log.warn("Failed to fetch fees for recent payments: {}", e.getMessage());
+                }
+            }
+
+            return payments.stream().map(p -> {
+                Fee fee = feeMap.get(p.getFeeId());
+                String studentName = (fee != null && fee.getStudentName() != null) ? fee.getStudentName() : ("Student #" + p.getStudentId());
+                String className = (fee != null && fee.getClassName() != null) ? fee.getClassName() : "-";
+                String admissionNumber = (fee != null && fee.getAdmissionNumber() != null) ? fee.getAdmissionNumber() : "";
+
+                return RecentPaymentDTO.builder()
+                        .id(p.getId())
+                        .feeId(p.getFeeId())
+                        .studentId(p.getStudentId())
+                        .studentName(studentName)
+                        .admissionNumber(admissionNumber)
+                        .className(className)
+                        .amountPaid(p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO)
+                        .paymentDate(p.getPaymentDate())
+                        .paymentMethod(p.getPaymentMethod() != null ? p.getPaymentMethod() : "ONLINE")
+                        .note(p.getNote())
+                        .status("Paid")
+                        .createdAt(p.getCreatedAt())
+                        .build();
+            }).toList();
+        } catch (Exception e) {
+            log.error("Failed to load recent payments: {}", e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     private FeeStatus determineStatus(BigDecimal total, BigDecimal paid) {
