@@ -5,6 +5,7 @@ import { academicService } from '../../services/academicService';
 import { homeworkService } from '../../services/homeworkService';
 import { holidayService } from '../../services/holidayService';
 import { leaveService } from '../../services/leaveService';
+import { notificationService } from '../../services/notificationService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import {
@@ -23,10 +24,11 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  Bell,
 } from 'lucide-react';
 
 export const TeacherDashboard = () => {
-  const [activeTab, setActiveTab] = useState('attendance'); // 'attendance' | 'marks' | 'homework' | 'holidays' | 'leave'
+  const [activeTab, setActiveTab] = useState('attendance'); // 'attendance' | 'marks' | 'homework' | 'holidays' | 'leave' | 'notifications'
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,6 +62,10 @@ export const TeacherDashboard = () => {
 
   // Leave Requests State
   const [leaveRequests, setLeaveRequests] = useState([]);
+
+  // Notifications State
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   const { addToast } = useToast();
 
@@ -257,6 +263,19 @@ export const TeacherDashboard = () => {
     }
   };
 
+  // Notification handler
+  const loadNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const res = await notificationService.getMyNotifications();
+      if (res.success && res.data) setNotifications(res.data);
+    } catch (err) {
+      addToast('Failed to load notifications', 'error');
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -297,6 +316,15 @@ export const TeacherDashboard = () => {
           className={`btn btn-sm ${activeTab === 'leave' ? 'btn-primary' : 'btn-secondary'}`}
         >
           <FileText size={16} /> Leave Requests ({leaveRequests.filter(r => r.status === 'PENDING').length} pending)
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('notifications');
+            if (notifications.length === 0) loadNotifications();
+          }}
+          className={`btn btn-sm ${activeTab === 'notifications' ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          <Bell size={16} /> Notifications
         </button>
       </div>
 
@@ -626,6 +654,56 @@ export const TeacherDashboard = () => {
                           </div>
                         )}
                       </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 6: Notifications */}
+      {activeTab === 'notifications' && (
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title"><Bell size={18} style={{ marginRight: 6 }} /> My Notifications</h3>
+            <button className="btn btn-secondary btn-sm" onClick={loadNotifications} disabled={loadingNotifications}>
+              {loadingNotifications ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Audience</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingNotifications ? (
+                  <tr>
+                    <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                      Loading notifications...
+                    </td>
+                  </tr>
+                ) : notifications.length === 0 ? (
+                  <tr>
+                    <td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                      No notifications.
+                    </td>
+                  </tr>
+                ) : (
+                  notifications.map((n) => (
+                    <tr key={n.id}>
+                      <td><strong>{n.date}</strong></td>
+                      <td>
+                        <span className={`badge ${n.audience === 'BOTH' ? 'badge-success' : 'badge-warning'}`}>
+                          {n.audience === 'TEACHERS' ? 'Teachers' : n.audience === 'BOTH' ? 'Both' : n.audience}
+                        </span>
+                      </td>
+                      <td style={{ maxWidth: '400px' }}>{n.message}</td>
                     </tr>
                   ))
                 )}

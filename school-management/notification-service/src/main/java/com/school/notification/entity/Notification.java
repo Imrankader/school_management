@@ -3,10 +3,11 @@ package com.school.notification.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Notification sent to a parent.
+ * Notification sent by Admin to Students, Teachers, or Both.
  */
 @Entity
 @Table(name = "notifications")
@@ -21,24 +22,27 @@ public class Notification {
     private Long id;
 
     @Column(nullable = false)
-    private Long parentId;
+    private LocalDate date;
 
     @Column(nullable = false)
-    private String title;
+    private String audience;   // STUDENTS | TEACHERS | BOTH
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 
     @Column(nullable = false)
-    private LocalDateTime createdAt;
+    private String status;     // SENT
 
     @Column(nullable = false)
-    private boolean read;
+    private LocalDateTime createdAt;
 
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (status == null) {
+            status = "SENT";
         }
     }
 }

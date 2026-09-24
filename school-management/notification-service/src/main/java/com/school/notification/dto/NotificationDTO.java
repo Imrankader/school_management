@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -20,16 +21,16 @@ public class NotificationDTO {
 
     private Long id;
 
-    @NotNull(message = "Parent ID is required")
-    private Long parentId;
+    @NotNull(message = "Date is required")
+    private LocalDate date;
 
-    @NotBlank(message = "Title is required")
-    private String title;
+    @NotBlank(message = "Audience is required")
+    private String audience;   // STUDENTS | TEACHERS | BOTH
 
     @NotBlank(message = "Message is required")
     private String message;
 
-    private LocalDateTime createdAt;
+    private String status;
 
-    private boolean read;
+    private LocalDateTime createdAt;
 }

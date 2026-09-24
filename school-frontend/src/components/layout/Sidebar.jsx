@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   Palmtree,
   FileText,
+  Bell,
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -75,6 +76,10 @@ export const Sidebar = () => {
             <NavLink to="/admin/import-export" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <FileSpreadsheet size={19} />
               <span>Import / Export</span>
+            </NavLink>
+            <NavLink to="/admin/notifications" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <Bell size={19} />
+              <span>Notifications</span>
             </NavLink>
           </>
         )}

@@ -19,6 +19,7 @@ import { HomeworkPage } from './pages/admin/HomeworkPage';
 import { HolidayPage } from './pages/admin/HolidayPage';
 import { LeaveRequestsPage } from './pages/admin/LeaveRequestsPage';
 import { ImportExportPage } from './pages/admin/ImportExportPage';
+import { NotificationsPage } from './pages/admin/NotificationsPage';
 
 // Teacher & Parent Pages
 import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
@@ -68,6 +69,7 @@ export const App = () => {
                 <Route path="holidays" element={<HolidayPage />} />
                 <Route path="leave" element={<LeaveRequestsPage />} />
                 <Route path="import-export" element={<ImportExportPage />} />
+                <Route path="notifications" element={<NotificationsPage />} />
               </Route>
 
               {/* Teacher Protected Routes */}

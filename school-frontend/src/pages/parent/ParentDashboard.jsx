@@ -8,6 +8,7 @@ import { academicService } from '../../services/academicService';
 import { homeworkService } from '../../services/homeworkService';
 import { holidayService } from '../../services/holidayService';
 import { leaveService } from '../../services/leaveService';
+import { notificationService } from '../../services/notificationService';
 import {
   User,
   CalendarCheck,
@@ -21,6 +22,7 @@ import {
   FileText,
   Clock,
   Send,
+  Bell,
 } from 'lucide-react';
 
 const TABS = [
@@ -31,6 +33,7 @@ const TABS = [
   { id: 'homework', label: 'Homework', icon: BookOpen },
   { id: 'holidays', label: 'Holidays', icon: Palmtree },
   { id: 'leave', label: 'Leave', icon: FileText },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
 export const ParentDashboard = () => {
@@ -45,6 +48,8 @@ export const ParentDashboard = () => {
   const [homework, setHomework] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [loading, setLoading] = useState(true);
   const [leaveForm, setLeaveForm] = useState({ startDate: '', endDate: '', reason: '' });
   const [submittingLeave, setSubmittingLeave] = useState(false);
@@ -74,13 +79,14 @@ export const ParentDashboard = () => {
         console.error('Student load failed', e);
       }
 
-      const [attRes, feeRes, mrkRes, hwRes, holRes, lvRes] = await Promise.allSettled([
+      const [attRes, feeRes, mrkRes, hwRes, holRes, lvRes, notifRes] = await Promise.allSettled([
         attendanceService.getAttendanceByStudent(studentId),
         feeService.getFeesByStudent(studentId),
         academicService.getMarksByStudent(studentId),
         currentClassName ? homeworkService.getByClass(currentClassName) : Promise.resolve({ data: [] }),
         holidayService.getAll(),
         leaveService.getMyLeave(),
+        notificationService.getMyNotifications(),
       ]);
 
       if (attRes.status === 'fulfilled' && attRes.value?.data) setAttendance(attRes.value.data);
@@ -89,10 +95,23 @@ export const ParentDashboard = () => {
       if (hwRes.status === 'fulfilled' && hwRes.value?.data) setHomework(hwRes.value.data || []);
       if (holRes.status === 'fulfilled' && holRes.value?.data) setHolidays(holRes.value.data || []);
       if (lvRes.status === 'fulfilled' && lvRes.value?.data) setLeaveRequests(lvRes.value.data || []);
+      if (notifRes.status === 'fulfilled' && notifRes.value?.data) setNotifications(notifRes.value.data || []);
     } catch (err) {
       console.error('Failed to load parent overview', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const res = await notificationService.getMyNotifications();
+      if (res.success && res.data) setNotifications(res.data);
+    } catch (err) {
+      console.error('Failed to load notifications', err);
+    } finally {
+      setLoadingNotifications(false);
     }
   };
 
@@ -493,6 +512,55 @@ export const ParentDashboard = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications Tab */}
+      {activeTab === 'notifications' && (
+        <div className="card">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="card-title"><Bell size={18} style={{ marginRight: 6 }} /> School Announcements & Notifications</h3>
+            <button className="btn btn-secondary btn-sm" onClick={loadNotifications} disabled={loadingNotifications}>
+              {loadingNotifications ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+          <div className="card-body">
+            {loadingNotifications ? (
+              <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Loading notifications...</p>
+            ) : notifications.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
+                <Bell size={40} style={{ opacity: 0.3, marginBottom: '0.75rem' }} />
+                <p style={{ margin: 0, fontWeight: 500 }}>No notifications at this time.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {notifications.map(n => (
+                  <div
+                    key={n.id}
+                    style={{
+                      padding: '1rem 1.25rem',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'var(--bg-main)',
+                      borderLeft: '4px solid var(--color-primary, #3b82f6)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                        {n.date}
+                      </span>
+                      <span className={`badge ${n.audience === 'BOTH' ? 'badge-success' : 'badge-primary'}`}>
+                        {n.audience === 'STUDENTS' ? 'Students' : n.audience === 'BOTH' ? 'All (Students & Teachers)' : n.audience}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-main)', margin: 0, lineHeight: 1.5 }}>
+                      {n.message}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
