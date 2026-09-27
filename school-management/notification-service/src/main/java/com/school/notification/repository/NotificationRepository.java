@@ -17,7 +17,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /** All notifications, newest first — for Admin history */
     List<Notification> findAllByOrderByCreatedAtDesc();
 
-    /** Notifications visible to a specific audience role (e.g. STUDENTS sees STUDENTS + BOTH) */
-    @Query("SELECT n FROM Notification n WHERE n.audience = :role OR n.audience = 'BOTH' ORDER BY n.createdAt DESC")
+    /** Notifications visible to a specific audience role (e.g. STUDENTS sees STUDENTS + BOTH, TEACHERS sees TEACHERS + BOTH) */
+    @Query("SELECT n FROM Notification n WHERE n.audience = :role OR (:role = 'STUDENTS' AND n.audience = 'STUDENT') OR (:role = 'TEACHERS' AND n.audience = 'TEACHER') OR n.audience = 'BOTH' ORDER BY n.createdAt DESC")
     List<Notification> findByAudienceForRole(@Param("role") String role);
 }

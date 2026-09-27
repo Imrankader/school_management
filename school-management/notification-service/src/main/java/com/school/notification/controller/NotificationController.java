@@ -31,7 +31,11 @@ public class NotificationController {
             HttpServletRequest request) {
         // Verify caller is ADMIN
         String token = jwtDecoder.extractRaw(request.getHeader("Authorization"));
-        String role = (token != null) ? jwtDecoder.getRole(token) : null;
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Invalid or expired authentication token"));
+        }
+        String role = jwtDecoder.getRole(token);
         if (!"ADMIN".equals(role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(ApiResponse.error("Only ADMIN can send notifications"));
@@ -46,7 +50,11 @@ public class NotificationController {
     @GetMapping("/history")
     public ResponseEntity<ApiResponse<List<NotificationDTO>>> getHistory(HttpServletRequest request) {
         String token = jwtDecoder.extractRaw(request.getHeader("Authorization"));
-        String role = (token != null) ? jwtDecoder.getRole(token) : null;
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Invalid or expired authentication token"));
+        }
+        String role = jwtDecoder.getRole(token);
         if (!"ADMIN".equals(role)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(ApiResponse.error("Only ADMIN can view notification history"));
@@ -62,7 +70,7 @@ public class NotificationController {
         String token = jwtDecoder.extractRaw(request.getHeader("Authorization"));
         if (token == null || !jwtDecoder.isValidToken(token)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ApiResponse.error("Invalid or missing token"));
+                    .body(ApiResponse.error("Invalid or missing authentication token"));
         }
 
         String role = jwtDecoder.getRole(token);
@@ -71,8 +79,8 @@ public class NotificationController {
         String audienceFilter;
         if ("TEACHER".equals(role)) {
             audienceFilter = "TEACHERS";
-        } else if ("PARENT".equals(role)) {
-            // Parents see student notifications (students are children of parents)
+        } else if ("PARENT".equals(role) || "STUDENT".equals(role)) {
+            // Parents and Students see student notifications
             audienceFilter = "STUDENTS";
         } else if ("ADMIN".equals(role)) {
             // Admin can see all

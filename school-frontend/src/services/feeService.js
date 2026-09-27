@@ -13,17 +13,23 @@ export const feeService = {
     return response.data;
   },
 
-  // Download Class-specific Excel Template
+  // Download Excel Template (Class-specific or Multi-Class)
   downloadTemplate: async (className) => {
-    const response = await api.get(`/api/fees/template/${encodeURIComponent(className)}`, {
+    const url = className && className !== 'ALL' && className !== 'All Classes'
+      ? `/api/fees/template/${encodeURIComponent(className)}`
+      : `/api/fees/template`;
+    const response = await api.get(url, {
       responseType: 'blob',
     });
     return response;
   },
 
-  // Atomic Bulk Billing Upload for a Class
+  // Atomic Bulk Billing Upload (Multi-Class supported)
   bulkUpload: async (className, formData) => {
-    const response = await api.post(`/api/fees/bulk-upload?className=${encodeURIComponent(className)}`, formData, {
+    const url = className && className !== 'ALL' && className !== 'All Classes'
+      ? `/api/fees/bulk-upload?className=${encodeURIComponent(className)}`
+      : `/api/fees/bulk-upload`;
+    const response = await api.post(url, formData, {
       headers: {
         'Content-Type': undefined,
       },

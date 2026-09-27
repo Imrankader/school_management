@@ -22,6 +22,8 @@ public class NotificationDTO {
     private Long id;
 
     @NotNull(message = "Date is required")
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = MultiFormatLocalDateDeserializer.class)
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate date;
 
     @NotBlank(message = "Audience is required")

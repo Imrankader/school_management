@@ -49,34 +49,39 @@ public class FeeController {
         return ResponseEntity.ok(ApiResponse.success(rows));
     }
 
-    /** GET /api/fees/template/{className} — Download pre-filled Excel template for a class */
-    @GetMapping("/template/{className}")
-    public ResponseEntity<byte[]> downloadBillingTemplate(@PathVariable("className") String className) {
+    /** GET /api/fees/template and /api/fees/template/{className} — Download pre-filled Excel template (multi-class or single class) */
+    @GetMapping({"/template", "/template/{className}"})
+    public ResponseEntity<byte[]> downloadBillingTemplate(
+            @PathVariable(value = "className", required = false) String className,
+            @RequestParam(value = "className", required = false) String queryClassName) {
+        String targetClass = className != null && !className.isBlank() ? className : queryClassName;
         try {
-            byte[] excelBytes = feeExcelService.generateTemplate(className);
+            byte[] excelBytes = feeExcelService.generateTemplate(targetClass);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-            String filename = String.format("%s_Billing_Template.xlsx", className.replace(" ", "_"));
+            String filename = (targetClass != null && !targetClass.isBlank() && !"ALL".equalsIgnoreCase(targetClass) && !"All Classes".equalsIgnoreCase(targetClass))
+                    ? String.format("%s_Billing_Template.xlsx", targetClass.replace(" ", "_"))
+                    : "Multi_Class_Billing_Template.xlsx";
             headers.setContentDispositionFormData("attachment", filename);
             headers.setContentLength(excelBytes.length);
             return ResponseEntity.ok().headers(headers).body(excelBytes);
         } catch (IOException e) {
-            log.error("Failed to generate billing template for {}: {}", className, e.getMessage());
+            log.error("Failed to generate billing template for {}: {}", targetClass, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
-    /** POST /api/fees/bulk-upload — Atomic bulk upload of billing records for a class */
+    /** POST /api/fees/bulk-upload — Atomic bulk upload of billing records (Multi-class supported) */
     @PostMapping("/bulk-upload")
     public ResponseEntity<ApiResponse<BulkUploadBillingResult>> bulkUploadBilling(
-            @RequestParam("className") String className,
+            @RequestParam(value = "className", required = false) String className,
             @RequestParam("file") MultipartFile file) {
         try {
             BulkUploadBillingResult result = feeExcelService.processBulkUpload(className, file);
             return ResponseEntity.ok(ApiResponse.success(result.getMessage(), result));
         } catch (Exception e) {
-            log.error("Bulk billing upload failed for {}: {}", className, e.getMessage());
+            log.error("Bulk billing upload failed: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Bulk upload processing failed: " + e.getMessage()));
         }

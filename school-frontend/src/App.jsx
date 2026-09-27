@@ -13,7 +13,7 @@ import { Register } from './pages/Register';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { StudentsPage } from './pages/admin/StudentsPage';
 import { ParentsPage } from './pages/admin/ParentsPage';
-import { AcademicsPage } from './pages/admin/AcademicsPage';
+import { MarksPage } from './pages/admin/MarksPage';
 import { AttendancePage } from './pages/admin/AttendancePage';
 import { FeesPage } from './pages/admin/FeesPage';
 import { HomeworkPage } from './pages/admin/HomeworkPage';
@@ -62,9 +62,10 @@ export const App = () => {
                 }
               >
                 <Route index element={<AdminDashboard />} />
-                <Route path="students" element={<StudentsPage />} />
+                 <Route path="students" element={<StudentsPage />} />
                 <Route path="parents" element={<ParentsPage />} />
-                <Route path="academics" element={<AcademicsPage />} />
+                <Route path="marks" element={<MarksPage />} />
+                <Route path="academics" element={<Navigate to="/admin/marks" replace />} />
                 <Route path="attendance" element={<AttendancePage />} />
                 <Route path="fees" element={<FeesPage />} />
                 <Route path="billing" element={<FeesPage />} />
@@ -85,6 +86,7 @@ export const App = () => {
                 }
               >
                 <Route index element={<TeacherDashboard />} />
+                <Route path="marks" element={<MarksPage />} />
               </Route>
 
               {/* Parent Protected Routes */}

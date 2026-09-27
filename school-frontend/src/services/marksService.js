@@ -1,0 +1,85 @@
+import api from './api';
+
+export const marksService = {
+  // Query marks with filters: className, section, examName, subjectName
+  getMarks: async (params = {}) => {
+    const response = await api.get('/api/academic/marks', { params });
+    return response.data;
+  },
+
+  getMarkById: async (id) => {
+    const response = await api.get(`/api/academic/marks/${id}`);
+    return response.data;
+  },
+
+  saveMark: async (markData) => {
+    const response = await api.post('/api/academic/marks', markData);
+    return response.data;
+  },
+
+  updateMark: async (id, markData) => {
+    const response = await api.put(`/api/academic/marks/${id}`, markData);
+    return response.data;
+  },
+
+  deleteMark: async (id) => {
+    const response = await api.delete(`/api/academic/marks/${id}`);
+    return response.data;
+  },
+
+  saveBatchMarks: async (batchData) => {
+    const response = await api.post('/api/academic/marks/batch', batchData);
+    return response.data;
+  },
+
+  bulkUpload: async (formData, params = {}) => {
+    const response = await api.post('/api/academic/marks/bulk-upload', formData, {
+      params,
+      headers: {
+        'Content-Type': undefined,
+      },
+    });
+    return response.data;
+  },
+
+  downloadTemplate: async (mode = 'WHOLE_SCHOOL') => {
+    const response = await api.get('/api/academic/marks/bulk-template', {
+      params: { mode },
+      responseType: 'blob',
+    });
+    return response;
+  },
+
+  // Supporting master data
+  getExams: async () => {
+    const response = await api.get('/api/academic/exams');
+    return response.data;
+  },
+
+  getSubjects: async () => {
+    const response = await api.get('/api/academic/subjects');
+    return response.data;
+  },
+
+  getClasses: async () => {
+    const response = await api.get('/api/academic/classes');
+    return response.data;
+  },
+
+  createExam: async (examData) => {
+    const response = await api.post('/api/academic/exams', examData);
+    return response.data;
+  },
+
+  createSubject: async (subjectData) => {
+    const response = await api.post('/api/academic/subjects', subjectData);
+    return response.data;
+  },
+
+  getMarksByStudent: async (studentId) => {
+    const response = await api.get(`/api/academic/marks/student/${studentId}`);
+    return response.data;
+  }
+};
+
+export default marksService;

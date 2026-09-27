@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { feeService } from '../../services/feeService';
+import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
-import { DollarSign, UserCheck, Calculator, X } from 'lucide-react';
+import { DollarSign, UserCheck, Calculator, X, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 export const IndividualBillingModal = ({
   isOpen,
@@ -12,6 +13,9 @@ export const IndividualBillingModal = ({
   initialStudent = null,
   onSuccess,
 }) => {
+  const isEditMode = Boolean(initialStudent);
+
+  const [studentList, setStudentList] = useState(activeStudents);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [termFees1, setTermFees1] = useState('');
   const [termFees2, setTermFees2] = useState('');
@@ -25,42 +29,84 @@ export const IndividualBillingModal = ({
 
   const { addToast } = useToast();
 
+  // Load fresh active students if in Add mode and list is empty or modal opens
   useEffect(() => {
-    if (initialStudent) {
-      setSelectedStudentId(initialStudent.studentId || initialStudent.id);
-      populateExisting(initialStudent.studentId || initialStudent.id);
-    } else if (activeStudents.length > 0) {
-      setSelectedStudentId(activeStudents[0].id);
-      populateExisting(activeStudents[0].id);
-    }
-  }, [isOpen, initialStudent, activeStudents]);
+    if (!isOpen) return;
 
-  const populateExisting = (studentId) => {
-    const existing = existingBillingRows.find((r) => r.studentId === Number(studentId));
-    if (existing && existing.feeId) {
-      setTermFees1(existing.termFees1 || '');
-      setTermFees2(existing.termFees2 || '');
-      setTermFees3(existing.termFees3 || '');
-      setBusFees(existing.busFees || '');
-      setExamFees(existing.examFees || '');
-      setPaidAmount(existing.paidAmount || '');
+    if (isEditMode && initialStudent) {
+      const sid = initialStudent.studentId || initialStudent.id;
+      setSelectedStudentId(sid);
+      populateFromStudent(initialStudent);
     } else {
-      setTermFees1('');
-      setTermFees2('');
-      setTermFees3('');
-      setBusFees('');
-      setExamFees('');
-      setPaidAmount('');
+      // In Add mode, fetch active students to ensure newly created students are present
+      const loadStudents = async () => {
+        try {
+          let list = [];
+          if (selectedClass && selectedClass !== 'ALL' && selectedClass !== 'All Classes') {
+            const res = await studentService.getActiveStudentsByClass(selectedClass);
+            list = res.data || res || [];
+          } else {
+            const res = await studentService.getAllStudents();
+            const all = res.data || res || [];
+            list = all.filter((s) => !Boolean(s.isActive === false));
+          }
+          setStudentList(list);
+          if (list.length > 0) {
+            setSelectedStudentId(list[0].id);
+            populateFromStudentId(list[0].id, list);
+          } else {
+            setSelectedStudentId('');
+            clearFees();
+          }
+        } catch (err) {
+          console.warn('Failed to load latest active students:', err);
+          setStudentList(activeStudents);
+          if (activeStudents.length > 0) {
+            setSelectedStudentId(activeStudents[0].id);
+            populateFromStudentId(activeStudents[0].id, activeStudents);
+          }
+        }
+      };
+
+      loadStudents();
+    }
+  }, [isOpen, initialStudent, selectedClass]);
+
+  const clearFees = () => {
+    setTermFees1('');
+    setTermFees2('');
+    setTermFees3('');
+    setBusFees('');
+    setExamFees('');
+    setPaidAmount('');
+  };
+
+  const populateFromStudent = (stud) => {
+    if (!stud) return;
+    setTermFees1(stud.termFees1 !== null && stud.termFees1 !== undefined ? String(stud.termFees1) : '');
+    setTermFees2(stud.termFees2 !== null && stud.termFees2 !== undefined ? String(stud.termFees2) : '');
+    setTermFees3(stud.termFees3 !== null && stud.termFees3 !== undefined ? String(stud.termFees3) : '');
+    setBusFees(stud.busFees !== null && stud.busFees !== undefined ? String(stud.busFees) : '');
+    setExamFees(stud.examFees !== null && stud.examFees !== undefined ? String(stud.examFees) : '');
+    setPaidAmount(stud.paidAmount !== null && stud.paidAmount !== undefined ? String(stud.paidAmount) : '');
+  };
+
+  const populateFromStudentId = (sid, list = studentList) => {
+    const existing = existingBillingRows.find((r) => r.studentId === Number(sid));
+    if (existing && (existing.feeId || existing.totalAmount !== undefined)) {
+      populateFromStudent(existing);
+    } else {
+      clearFees();
     }
   };
 
   const handleStudentSelect = (e) => {
     const sid = e.target.value;
     setSelectedStudentId(sid);
-    populateExisting(sid);
+    populateFromStudentId(sid);
   };
 
-  // Real-time calculations
+  // Real-time automatic calculations
   const t1 = parseFloat(termFees1) || 0;
   const t2 = parseFloat(termFees2) || 0;
   const t3 = parseFloat(termFees3) || 0;
@@ -68,10 +114,28 @@ export const IndividualBillingModal = ({
   const exam = parseFloat(examFees) || 0;
   const paid = parseFloat(paidAmount) || 0;
 
+  // Total Amount = Term Fee 1 + Term Fee 2 + Term Fee 3 + Bus Fee + Exam Fee
   const totalAmount = t1 + t2 + t3 + bus + exam;
+
+  // Outstanding = Total Amount - Paid Amount
   const outstandingAmount = Math.max(0, totalAmount - paid);
 
-  const selectedStudentObj = activeStudents.find((s) => s.id === Number(selectedStudentId));
+  // Active student object lookup
+  const selectedStudentObj = isEditMode
+    ? initialStudent
+    : studentList.find((s) => s.id === Number(selectedStudentId)) ||
+      activeStudents.find((s) => s.id === Number(selectedStudentId));
+
+  const studentDisplayName =
+    selectedStudentObj?.studentName ||
+    selectedStudentObj?.name ||
+    'Student';
+
+  const studentDisplayAdmission =
+    selectedStudentObj?.admissionNumber || '—';
+
+  const studentDisplayClass =
+    selectedStudentObj?.className || selectedClass || '—';
 
   const formatCurrency = (val) => {
     return '₹' + Number(val || 0).toLocaleString('en-IN', {
@@ -82,7 +146,7 @@ export const IndividualBillingModal = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedStudentId) {
+    if (!selectedStudentId && !initialStudent) {
       addToast('Please select an active student.', 'error');
       return;
     }
@@ -94,11 +158,11 @@ export const IndividualBillingModal = ({
 
     setSubmitting(true);
     try {
-      await feeService.createFee({
-        studentId: Number(selectedStudentId),
-        studentName: selectedStudentObj?.name || '',
-        admissionNumber: selectedStudentObj?.admissionNumber || '',
-        className: selectedClass,
+      const payload = {
+        studentId: Number(selectedStudentId || initialStudent?.studentId || initialStudent?.id),
+        studentName: studentDisplayName,
+        admissionNumber: studentDisplayAdmission !== '—' ? studentDisplayAdmission : '',
+        className: studentDisplayClass !== '—' ? studentDisplayClass : selectedClass,
         termFees1: t1,
         termFees2: t2,
         termFees3: t3,
@@ -109,9 +173,21 @@ export const IndividualBillingModal = ({
         pendingAmount: outstandingAmount,
         description,
         academicYear,
-      });
+      };
 
-      addToast(`Billing record saved for ${selectedStudentObj?.name || 'student'}!`, 'success');
+      if (isEditMode && initialStudent?.feeId) {
+        await feeService.updateFee(initialStudent.feeId, payload);
+        addToast(`Billing updated successfully for ${studentDisplayName}!`, 'success');
+      } else {
+        await feeService.createFee(payload);
+        addToast(
+          isEditMode
+            ? `Billing updated successfully for ${studentDisplayName}!`
+            : `Billing record saved for ${studentDisplayName}!`,
+          'success'
+        );
+      }
+
       if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
@@ -147,7 +223,7 @@ export const IndividualBillingModal = ({
                 width: '36px',
                 height: '36px',
                 borderRadius: '8px',
-                background: 'var(--primary-light)',
+                background: isEditMode ? '#eff6ff' : 'var(--primary-light)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -158,10 +234,18 @@ export const IndividualBillingModal = ({
             </div>
             <div>
               <h3 className="card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Add Billing for Individual
+                {isEditMode ? `Edit Student Billing` : `Add Individual Billing`}
               </h3>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Target Class: <strong style={{ color: 'var(--primary)' }}>{selectedClass}</strong>
+                {isEditMode ? (
+                  <span>
+                    Student: <strong style={{ color: 'var(--text-main)' }}>{studentDisplayName}</strong> • Class: <strong style={{ color: 'var(--primary)' }}>{studentDisplayClass}</strong>
+                  </span>
+                ) : (
+                  <span>
+                    Target Class: <strong style={{ color: 'var(--primary)' }}>{selectedClass}</strong>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -186,32 +270,75 @@ export const IndividualBillingModal = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.15rem' }}>
-            {/* Student Selection */}
-            <div>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.35rem' }}>
-                Select Active Student <span style={{ color: 'var(--danger)' }}>*</span>
-              </label>
-              <select
-                className="form-control"
-                value={selectedStudentId}
-                onChange={handleStudentSelect}
-                required
-                style={{ width: '100%', borderRadius: 'var(--radius-md)' }}
-              >
-                {activeStudents.length === 0 ? (
-                  <option value="">No active students found in {selectedClass}</option>
-                ) : (
-                  activeStudents.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.admissionNumber || `ID: ${s.id}`}) — Active
-                    </option>
-                  ))
-                )}
-              </select>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                Only active students currently enrolled in {selectedClass} are listed.
+            {/* Student Identity Card / Selection */}
+            {isEditMode ? (
+              <div>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.35rem', color: 'var(--text-muted)' }}>
+                  Student Identity (Locked)
+                </label>
+                <div
+                  style={{
+                    padding: '0.85rem 1rem',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
+                      {studentDisplayName}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Admission No: <strong style={{ color: 'var(--text-main)' }}>{studentDisplayAdmission}</strong> • Class: <strong style={{ color: 'var(--primary)' }}>{studentDisplayClass}</strong>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      backgroundColor: '#ecfdf5',
+                      color: '#059669',
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '9999px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <ShieldCheck size={14} /> Identity Verified
+                  </span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.35rem' }}>
+                  Select Active Student <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <select
+                  className="form-control"
+                  value={selectedStudentId}
+                  onChange={handleStudentSelect}
+                  required
+                  style={{ width: '100%', borderRadius: 'var(--radius-md)' }}
+                >
+                  {studentList.length === 0 ? (
+                    <option value="">No active students found in {selectedClass}</option>
+                  ) : (
+                    studentList.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.admissionNumber || `ID: ${s.id}`}) — {s.className || selectedClass}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Newly enrolled students from Student Management are immediately available.
+                </div>
+              </div>
+            )}
 
             {/* Fee Breakdown Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.85rem' }}>
@@ -310,7 +437,7 @@ export const IndividualBillingModal = ({
               />
             </div>
 
-            {/* Calculated Summary Box */}
+            {/* Calculated Summary Box (Read-Only Real-Time Display) */}
             <div
               style={{
                 backgroundColor: '#f8fafc',
@@ -324,7 +451,7 @@ export const IndividualBillingModal = ({
             >
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                  Total Amount
+                  Total Amount (Auto)
                 </div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
                   {formatCurrency(totalAmount)}
@@ -342,7 +469,7 @@ export const IndividualBillingModal = ({
 
               <div style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: '1rem' }}>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
-                  Outstanding
+                  Outstanding (Auto)
                 </div>
                 <div
                   style={{
@@ -381,10 +508,18 @@ export const IndividualBillingModal = ({
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={submitting || !selectedStudentId}
+              disabled={submitting || (!selectedStudentId && !initialStudent)}
               style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
             >
-              <DollarSign size={16} /> Save Billing Record
+              {isEditMode ? (
+                <>
+                  <CheckCircle2 size={16} /> Update Billing
+                </>
+              ) : (
+                <>
+                  <DollarSign size={16} /> Save Billing Record
+                </>
+              )}
             </button>
           </div>
         </form>

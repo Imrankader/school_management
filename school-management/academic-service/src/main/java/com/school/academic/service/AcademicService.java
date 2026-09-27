@@ -106,25 +106,189 @@ public class AcademicService {
 
     // ---- Mark ----
 
-    public List<Mark> getMarksByStudent(Long studentId) {
-        return markRepository.findByStudentId(studentId);
+    public List<com.school.academic.dto.MarkDTO> searchMarks(String className, String section, String examName, String subjectName) {
+        return markRepository.searchMarks(className, section, examName, subjectName).stream()
+                .map(this::toMarkDTO)
+                .toList();
     }
 
-    public List<Mark> getMarksByExam(Long examId) {
-        return markRepository.findByExamId(examId);
+    public List<com.school.academic.dto.MarkDTO> getMarksByStudent(Long studentId) {
+        return markRepository.findByStudentId(studentId).stream()
+                .map(this::toMarkDTO)
+                .toList();
     }
 
-    public Mark createMark(Mark mark) {
-        return markRepository.save(mark);
+    public List<com.school.academic.dto.MarkDTO> getMarksByExam(Long examId) {
+        return markRepository.findByExamId(examId).stream()
+                .map(this::toMarkDTO)
+                .toList();
     }
 
-    public Mark updateMark(Long id, Mark updated) {
+    public com.school.academic.dto.MarkDTO getMarkById(Long id) {
+        Mark mark = markRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Mark", "id", id));
+        return toMarkDTO(mark);
+    }
+
+    public com.school.academic.dto.MarkDTO saveOrUpdateMark(com.school.academic.dto.MarkDTO dto) {
+        if (dto.getStudentId() == null) {
+            throw new IllegalArgumentException("Student ID is required.");
+        }
+        if (dto.getSubjectName() == null || dto.getSubjectName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Subject name is required.");
+        }
+        if (dto.getExamName() == null || dto.getExamName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Exam name is required.");
+        }
+
+        double maxMarks = (dto.getMaxMarks() != null && dto.getMaxMarks() > 0) ? dto.getMaxMarks() : 100.0;
+        double marksObtained = dto.getMarksObtained() != null ? dto.getMarksObtained() : 0.0;
+        if (marksObtained < 0 || marksObtained > maxMarks) {
+            throw new IllegalArgumentException("Marks obtained (" + marksObtained + ") must be between 0 and " + maxMarks);
+        }
+
+        // Check for existing mark for Student + Subject + Exam (upsert)
+        java.util.Optional<Mark> existingOpt = dto.getId() != null ?
+                markRepository.findById(dto.getId()) :
+                markRepository.findFirstByStudentIdAndSubjectNameIgnoreCaseAndExamNameIgnoreCase(
+                        dto.getStudentId(), dto.getSubjectName(), dto.getExamName());
+
+        Long resolvedExamId = dto.getExamId();
+        if (resolvedExamId == null && dto.getExamName() != null) {
+            resolvedExamId = examRepository.findAll().stream()
+                    .filter(e -> e.getName() != null && e.getName().equalsIgnoreCase(dto.getExamName().trim()))
+                    .map(Exam::getId)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        Long resolvedSubjectId = dto.getSubjectId();
+        if (resolvedSubjectId == null && dto.getSubjectName() != null) {
+            resolvedSubjectId = subjectRepository.findAll().stream()
+                    .filter(s -> s.getName() != null && s.getName().equalsIgnoreCase(dto.getSubjectName().trim()))
+                    .map(Subject::getId)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        Mark mark;
+        if (existingOpt.isPresent()) {
+            mark = existingOpt.get();
+            mark.setMarksObtained(marksObtained);
+            mark.setMaxMarks(maxMarks);
+            mark.setGrade(Mark.calculateGrade(marksObtained, maxMarks));
+            if (dto.getRemarks() != null) mark.setRemarks(dto.getRemarks());
+            if (dto.getClassName() != null) mark.setClassName(dto.getClassName());
+            if (dto.getSection() != null) mark.setSection(dto.getSection());
+            if (dto.getStudentName() != null) mark.setStudentName(dto.getStudentName());
+            if (dto.getAdmissionNumber() != null) mark.setAdmissionNumber(dto.getAdmissionNumber());
+            if (mark.getExamId() == null) mark.setExamId(resolvedExamId);
+            if (mark.getSubjectId() == null) mark.setSubjectId(resolvedSubjectId);
+            mark.setUpdatedAt(java.time.LocalDateTime.now());
+        } else {
+            mark = Mark.builder()
+                    .studentId(dto.getStudentId())
+                    .admissionNumber(dto.getAdmissionNumber())
+                    .studentName(dto.getStudentName())
+                    .className(dto.getClassName())
+                    .section(dto.getSection())
+                    .examId(resolvedExamId)
+                    .examName(dto.getExamName())
+                    .subjectId(resolvedSubjectId)
+                    .subjectName(dto.getSubjectName())
+                    .marksObtained(marksObtained)
+                    .maxMarks(maxMarks)
+                    .grade(Mark.calculateGrade(marksObtained, maxMarks))
+                    .remarks(dto.getRemarks())
+                    .createdAt(java.time.LocalDateTime.now())
+                    .updatedAt(java.time.LocalDateTime.now())
+                    .build();
+        }
+
+        Mark saved = markRepository.save(mark);
+        return toMarkDTO(saved);
+    }
+
+    public List<com.school.academic.dto.MarkDTO> saveBatchMarks(com.school.academic.dto.MarkBatchRequest request) {
+        if (request.getMarks() == null || request.getMarks().isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        java.util.List<com.school.academic.dto.MarkDTO> results = new java.util.ArrayList<>();
+        for (com.school.academic.dto.MarkDTO dto : request.getMarks()) {
+            // Apply batch fallbacks
+            if (dto.getClassName() == null || dto.getClassName().isEmpty()) {
+                dto.setClassName(request.getClassName());
+            }
+            if (dto.getSection() == null || dto.getSection().isEmpty()) {
+                dto.setSection(request.getSection());
+            }
+            if (dto.getExamName() == null || dto.getExamName().isEmpty()) {
+                dto.setExamName(request.getExamName());
+            }
+            if (dto.getSubjectName() == null || dto.getSubjectName().isEmpty()) {
+                dto.setSubjectName(request.getSubjectName());
+            }
+            if (dto.getMaxMarks() == null || dto.getMaxMarks() <= 0) {
+                dto.setMaxMarks(request.getMaxMarks() != null ? request.getMaxMarks() : 100.0);
+            }
+
+            if (dto.getMarksObtained() != null) {
+                results.add(saveOrUpdateMark(dto));
+            }
+        }
+        return results;
+    }
+
+    public com.school.academic.dto.MarkDTO updateMark(Long id, com.school.academic.dto.MarkDTO updated) {
         Mark existing = markRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Mark", "id", id));
-        existing.setMarksObtained(updated.getMarksObtained());
-        existing.setGrade(updated.getGrade());
-        existing.setRemarks(updated.getRemarks());
-        return markRepository.save(existing);
+
+        double maxMarks = (updated.getMaxMarks() != null && updated.getMaxMarks() > 0) ?
+                updated.getMaxMarks() : (existing.getMaxMarks() != null ? existing.getMaxMarks() : 100.0);
+        double marksObtained = updated.getMarksObtained() != null ?
+                updated.getMarksObtained() : (existing.getMarksObtained() != null ? existing.getMarksObtained() : 0.0);
+
+        if (marksObtained < 0 || marksObtained > maxMarks) {
+            throw new IllegalArgumentException("Marks obtained (" + marksObtained + ") must be between 0 and " + maxMarks);
+        }
+
+        existing.setMarksObtained(marksObtained);
+        existing.setMaxMarks(maxMarks);
+        existing.setGrade(Mark.calculateGrade(marksObtained, maxMarks));
+        if (updated.getRemarks() != null) existing.setRemarks(updated.getRemarks());
+        existing.setUpdatedAt(java.time.LocalDateTime.now());
+
+        Mark saved = markRepository.save(existing);
+        return toMarkDTO(saved);
+    }
+
+    public void deleteMark(Long id) {
+        if (!markRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Mark", "id", id);
+        }
+        markRepository.deleteById(id);
+    }
+
+    public com.school.academic.dto.MarkDTO toMarkDTO(Mark mark) {
+        return com.school.academic.dto.MarkDTO.builder()
+                .id(mark.getId())
+                .studentId(mark.getStudentId())
+                .admissionNumber(mark.getAdmissionNumber())
+                .studentName(mark.getStudentName())
+                .className(mark.getClassName())
+                .section(mark.getSection())
+                .examId(mark.getExamId())
+                .examName(mark.getExamName())
+                .subjectId(mark.getSubjectId())
+                .subjectName(mark.getSubjectName())
+                .marksObtained(mark.getMarksObtained())
+                .maxMarks(mark.getMaxMarks())
+                .grade(mark.getGrade())
+                .remarks(mark.getRemarks())
+                .createdAt(mark.getCreatedAt())
+                .updatedAt(mark.getUpdatedAt())
+                .build();
     }
 
     // ---- Homework ----

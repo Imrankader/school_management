@@ -53,9 +53,9 @@ export const Sidebar = () => {
               <UserCheck size={19} />
               <span>Parents</span>
             </NavLink>
-            <NavLink to="/admin/academics" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <BookOpen size={19} />
-              <span>Academics</span>
+            <NavLink to="/admin/marks" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <Award size={19} />
+              <span>Marks</span>
             </NavLink>
             <NavLink to="/admin/attendance" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <CalendarCheck size={19} />
@@ -95,7 +95,11 @@ export const Sidebar = () => {
             </div>
             <NavLink to="/teacher" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <LayoutDashboard size={19} />
-              <span>Attendance & Marks</span>
+              <span>Attendance & Homework</span>
+            </NavLink>
+            <NavLink to="/teacher/marks" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <Award size={19} />
+              <span>Marks</span>
             </NavLink>
           </>
         )}

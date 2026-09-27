@@ -356,24 +356,38 @@ export const ParentDashboard = () => {
       {/* ===== MARKS TAB ===== */}
       {activeTab === 'marks' && (
         <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><Award size={18} style={{ marginRight: 6 }} />Assessment Results</h3>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 className="card-title"><Award size={18} style={{ marginRight: 6 }} />Academic Marks & Progress</h3>
+            <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>{child ? `${child.name} (${child.className || ''} - ${child.section || ''})` : ''}</span>
           </div>
           <div className="table-container">
             <table className="table">
               <thead>
-                <tr><th>Exam ID</th><th>Marks Obtained</th><th>Grade</th><th>Remarks</th></tr>
+                <tr>
+                  <th>Exam</th>
+                  <th>Subject</th>
+                  <th>Marks</th>
+                  <th>Max Marks</th>
+                  <th>Grade</th>
+                  <th>Remarks</th>
+                </tr>
               </thead>
               <tbody>
                 {marks.length === 0 ? (
-                  <tr><td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No assessment results yet.</td></tr>
+                  <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No assessment results recorded yet.</td></tr>
                 ) : (
                   marks.map(m => (
                     <tr key={m.id}>
-                      <td>Exam #{m.examId}</td>
-                      <td><strong>{m.marksObtained}</strong></td>
-                      <td><span className="badge badge-primary">{m.grade || '—'}</span></td>
-                      <td style={{ color: 'var(--text-muted)' }}>{m.remarks || '—'}</td>
+                      <td><span className="badge badge-primary" style={{ fontWeight: 600 }}>{m.examName || (m.examId ? `Exam #${m.examId}` : '—')}</span></td>
+                      <td><strong>{m.subjectName || 'General'}</strong></td>
+                      <td><strong style={{ fontSize: '1rem', color: 'var(--primary)' }}>{m.marksObtained}</strong></td>
+                      <td>{m.maxMarks || 100}</td>
+                      <td>
+                        <span className={`badge ${['A+', 'A'].includes(m.grade) ? 'badge-success' : ['B+', 'B'].includes(m.grade) ? 'badge-primary' : m.grade === 'F' ? 'badge-danger' : 'badge-warning'}`}>
+                          {m.grade || '—'}
+                        </span>
+                      </td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{m.remarks || '—'}</td>
                     </tr>
                   ))
                 )}

@@ -19,17 +19,35 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
 
+    public static String normalizeAudience(String audience) {
+        if (audience == null || audience.trim().isEmpty()) {
+            return "BOTH";
+        }
+        String upper = audience.trim().toUpperCase();
+        if (upper.startsWith("STUDENT")) {
+            return "STUDENTS";
+        }
+        if (upper.startsWith("TEACHER")) {
+            return "TEACHERS";
+        }
+        if ("BOTH".equals(upper)) {
+            return "BOTH";
+        }
+        return upper;
+    }
+
     /** Admin sends a notification to an audience */
     public NotificationDTO sendNotification(NotificationDTO dto) {
+        String normalizedAudience = normalizeAudience(dto.getAudience());
         Notification notification = Notification.builder()
                 .date(dto.getDate())
-                .audience(dto.getAudience().toUpperCase())
+                .audience(normalizedAudience)
                 .message(dto.getMessage())
                 .status("SENT")
                 .build();
 
         Notification saved = notificationRepository.save(notification);
-        log.info("Notification sent to {}: {}", dto.getAudience(), dto.getMessage());
+        log.info("Notification sent to {}: {}", normalizedAudience, dto.getMessage());
         return toDTO(saved);
     }
 
@@ -43,7 +61,8 @@ public class NotificationService {
     /** Students/Teachers fetch notifications for their role */
     public List<NotificationDTO> getNotificationsForRole(String role) {
         // role is STUDENTS or TEACHERS — query returns matching + BOTH
-        return notificationRepository.findByAudienceForRole(role.toUpperCase()).stream()
+        String normalizedRole = normalizeAudience(role);
+        return notificationRepository.findByAudienceForRole(normalizedRole).stream()
                 .map(this::toDTO)
                 .toList();
     }
