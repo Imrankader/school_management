@@ -61,8 +61,8 @@ export const FeesPage = () => {
   const [classSearchTerm, setClassSearchTerm] = useState('');
   const [classStudentStatusFilter, setClassStudentStatusFilter] = useState('All');
 
-  // Expanded Row IDs for breakdown details
-  const [expandedRows, setExpandedRows] = useState({});
+  // Expanded student ID for breakdown details (only one expanded at a time)
+  const [expandedStudentId, setExpandedStudentId] = useState(null);
 
   // Pagination for Selected Class Student Billing
   const [currentPage, setCurrentPage] = useState(1);
@@ -144,7 +144,7 @@ export const FeesPage = () => {
       setClassSearchTerm('');
       setClassStudentStatusFilter('All');
       setCurrentPage(1);
-      setExpandedRows({});
+      setExpandedStudentId(null);
 
       const [billingRes, studentsRes] = await Promise.allSettled([
         feeService.getStudentBillingByClass(className),
@@ -180,15 +180,13 @@ export const FeesPage = () => {
   const handleBackToClasses = () => {
     setView('classes');
     setSelectedClass('');
+    setExpandedStudentId(null);
     loadClassSummaries();
     loadRecentPayments();
   };
 
-  const toggleRowExpand = (sNo) => {
-    setExpandedRows((prev) => ({
-      ...prev,
-      [sNo]: !prev[sNo],
-    }));
+  const toggleRowExpand = (studentId) => {
+    setExpandedStudentId((prev) => (prev === studentId ? null : studentId));
   };
 
   // Currency Formatter
@@ -1559,9 +1557,10 @@ export const FeesPage = () => {
                     </tr>
                   ) : (
                     paginatedBillingRows.map((row) => {
-                      const isExpanded = !!expandedRows[row.sNo];
+                      const studentId = row.studentId || row.id;
+                      const isExpanded = expandedStudentId !== null && expandedStudentId === studentId;
                       return (
-                        <React.Fragment key={row.sNo || row.studentId}>
+                        <React.Fragment key={studentId || row.sNo}>
                           <tr
                             style={{ transition: 'background-color 0.12s ease' }}
                             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
@@ -1571,7 +1570,7 @@ export const FeesPage = () => {
                               <button
                                 type="button"
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px' }}
-                                onClick={() => toggleRowExpand(row.sNo)}
+                                onClick={() => toggleRowExpand(studentId)}
                                 title={isExpanded ? 'Hide breakdown' : 'View breakdown'}
                               >
                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}

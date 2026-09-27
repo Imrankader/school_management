@@ -695,6 +695,8 @@ public class FeeExcelService {
             log.error("Failed to generate error Excel report: {}", e.getMessage());
             return null;
         }
+    }
+
     private int naturalClassCompare(String a, String b) {
         if (a == null && b == null) return 0;
         if (a == null) return -1;
