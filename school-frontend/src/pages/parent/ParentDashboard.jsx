@@ -271,10 +271,18 @@ export const ParentDashboard = () => {
                 {[
                   ['Name', getChildName(child)],
                   ['Admission No', getAdmissionNo(child)],
-                  ['Class', child.className],
+                  ['Class', child.className || 'N/A'],
                   ['Section', child.section || 'N/A'],
+                  ['DOB', child.dateOfBirth || 'N/A'],
                   ['Gender', child.gender || 'N/A'],
-                  ['Date of Birth', child.dateOfBirth || 'N/A'],
+                  ['Father Name', child.fatherName || 'N/A'],
+                  ['Mother Name', child.motherName || 'N/A'],
+                  ['Guardian Name', child.guardianName || 'N/A'],
+                  ['Mobile', child.contactNumber || child.phoneNumber || 'N/A'],
+                  ['Address', child.address || 'N/A'],
+                  ['Blood Group', child.bloodGroup || 'N/A'],
+                  ['Joining Date', child.joiningDate || 'N/A'],
+                  ['Active Status', child.isActive !== false ? 'Active' : 'Inactive'],
                 ].map(([label, value]) => (
                   <div key={label} style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{label}</div>

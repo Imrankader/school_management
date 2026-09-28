@@ -20,6 +20,10 @@ public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpec
 
     Optional<Student> findByAdmissionNumber(String admissionNumber);
 
+    List<Student> findAllByPhoneNumber(String phoneNumber);
+
+    Optional<Student> findFirstByPhoneNumber(String phoneNumber);
+
     List<Student> findByClassName(String className);
 
     List<Student> findByClassNameAndIsActiveTrue(String className);

@@ -2,8 +2,14 @@ import api from './api';
 
 export const authService = {
   login: async (credentials) => {
-    // credentials: { username, password }
+    // credentials: { email, password }
     const response = await api.post('/api/auth/login', credentials);
+    return response.data;
+  },
+
+  parentLogin: async (credentials) => {
+    // credentials: { phoneNumber, password }
+    const response = await api.post('/api/auth/parent-login', credentials);
     return response.data;
   },
 

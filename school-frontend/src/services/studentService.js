@@ -62,15 +62,32 @@ export const studentService = {
     return response;
   },
 
-  downloadBulkTemplate: async () => {
+  getClassSummary: async () => {
+    const response = await api.get('/api/students/class-summary');
+    return response.data;
+  },
+
+  downloadBulkTemplate: async (className) => {
     const response = await api.get('/api/students/bulk-template', {
+      params: className ? { className } : {},
       responseType: 'blob',
     });
     return response;
   },
 
-  bulkUpload: async (formData) => {
+  bulkValidate: async (formData, className) => {
+    const response = await api.post('/api/students/bulk-validate', formData, {
+      params: className ? { className } : {},
+      headers: {
+        'Content-Type': undefined,
+      },
+    });
+    return response.data;
+  },
+
+  bulkUpload: async (formData, className) => {
     const response = await api.post('/api/students/bulk-upload', formData, {
+      params: className ? { className } : {},
       headers: {
         'Content-Type': undefined,
       },

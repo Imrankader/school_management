@@ -5,6 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { BulkBillingUploadModal } from '../../components/billing/BulkBillingUploadModal';
 import { IndividualBillingModal } from '../../components/billing/IndividualBillingModal';
+import BillingTableSkeleton from '../../components/billing/BillingTableSkeleton';
 import {
   DollarSign,
   Plus,
@@ -28,8 +29,10 @@ import {
   CheckCircle,
   AlertTriangle,
   XCircle,
-  Users
+  Users,
+  Pencil
 } from 'lucide-react';
+import { getClassAcademicRank, compareAcademicClasses } from '../../utils/academicClassOrder';
 
 export const FeesPage = () => {
   // Navigation View: 'classes' (main ERP overview) | 'class-details' (detailed class breakdown)
@@ -54,6 +57,7 @@ export const FeesPage = () => {
   // Student Billing Data for Selected Class
   const [studentBillingRows, setStudentBillingRows] = useState([]);
   const [activeStudentsInClass, setActiveStudentsInClass] = useState([]);
+  const [allActiveStudents, setAllActiveStudents] = useState([]);
   const [loadingClassStudents, setLoadingClassStudents] = useState(false);
   const [classDetailsError, setClassDetailsError] = useState(null);
 
@@ -70,7 +74,7 @@ export const FeesPage = () => {
 
   // Modals
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [bulkModalClass, setBulkModalClass] = useState('');
+  const [bulkModalClass, setBulkModalClass] = useState('ALL');
   const [isIndividualModalOpen, setIsIndividualModalOpen] = useState(false);
   const [individualModalStudent, setIndividualModalStudent] = useState(null);
 
@@ -95,6 +99,7 @@ export const FeesPage = () => {
   useEffect(() => {
     loadClassSummaries();
     loadRecentPayments();
+    loadAllActiveStudents();
   }, []);
 
   const loadClassSummaries = async () => {
@@ -103,9 +108,11 @@ export const FeesPage = () => {
       setSummaryError(null);
       const res = await feeService.getClassBillingSummary();
       if (res && res.success && Array.isArray(res.data)) {
-        setClassSummaries(res.data);
+        const sorted = [...res.data].sort(compareAcademicClasses);
+        setClassSummaries(sorted);
       } else if (Array.isArray(res)) {
-        setClassSummaries(res);
+        const sorted = [...res].sort(compareAcademicClasses);
+        setClassSummaries(sorted);
       } else {
         setClassSummaries([]);
       }
@@ -134,6 +141,21 @@ export const FeesPage = () => {
       setRecentPayments([]);
     } finally {
       setLoadingRecentPayments(false);
+    }
+  };
+
+  const loadAllActiveStudents = async () => {
+    try {
+      const res = await studentService.getAllStudents({ page: 1, pageSize: 10000, status: 'Active' });
+      const studentsList = res?.data?.data || (Array.isArray(res?.data) ? res.data : []);
+      const sorted = [...studentsList].sort((a, b) => {
+        const classComp = compareAcademicClasses(a.className || '', b.className || '');
+        if (classComp !== 0) return classComp;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+      setAllActiveStudents(sorted);
+    } catch (err) {
+      console.error('Failed to load all active students for billing:', err);
     }
   };
 
@@ -229,14 +251,15 @@ export const FeesPage = () => {
     };
   }, [classSummaries]);
 
-  // Distinct class list for filter dropdown
+  // Distinct class list for filter dropdown in academic order
   const distinctClasses = useMemo(() => {
-    return classSummaries.map((c) => c.className).filter(Boolean);
+    const list = classSummaries.map((c) => c.className).filter(Boolean);
+    return [...list].sort(compareAcademicClasses);
   }, [classSummaries]);
 
-  // Filtered Class Summaries
+  // Filtered Class Summaries sorted in academic order
   const filteredClassSummaries = useMemo(() => {
-    return classSummaries.filter((row) => {
+    const filtered = classSummaries.filter((row) => {
       const q = mainSearchTerm.trim().toLowerCase();
       const matchSearch = !q || (row.className && row.className.toLowerCase().includes(q));
       const matchClass = classFilter === 'All' || row.className === classFilter;
@@ -255,6 +278,7 @@ export const FeesPage = () => {
       const matchStatus = mainStatusFilter === 'All' || mainStatusFilter === rowStatus;
       return matchSearch && matchClass && matchStatus;
     });
+    return [...filtered].sort(compareAcademicClasses);
   }, [classSummaries, mainSearchTerm, classFilter, mainStatusFilter]);
 
   // Filtered & Paginated Student Billing Rows within Selected Class
@@ -499,7 +523,7 @@ export const FeesPage = () => {
   };
 
   const handleOpenBulkForClass = (clsName) => {
-    setBulkModalClass(clsName || (distinctClasses[0] || ''));
+    setBulkModalClass(clsName && clsName !== 'ALL' ? clsName : 'ALL');
     setIsBulkModalOpen(true);
   };
 
@@ -568,7 +592,7 @@ export const FeesPage = () => {
                 type="button"
                 className="btn btn-secondary"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
-                onClick={() => handleOpenBulkForClass('')}
+                onClick={() => handleOpenBulkForClass('ALL')}
               >
                 <Upload size={15} />
                 Bulk Upload
@@ -579,13 +603,12 @@ export const FeesPage = () => {
                 className="btn btn-primary"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 1rem' }}
                 onClick={() => {
-                  if (distinctClasses.length > 0) {
-                    handleOpenClassDetails(distinctClasses[0]);
-                  }
+                  setIndividualModalStudent(null);
+                  setIsIndividualModalOpen(true);
                 }}
               >
-                <Layers size={15} />
-                Manage Class Billing
+                <Plus size={15} />
+                Individual Billing
               </button>
             </div>
           </div>
@@ -850,6 +873,7 @@ export const FeesPage = () => {
                 style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
                 value={academicYearFilter}
                 onChange={(e) => setAcademicYearFilter(e.target.value)}
+                disabled={loadingSummaries}
               >
                 <option value="2026-2027">AY 2026-2027</option>
                 <option value="2025-2026">AY 2025-2026</option>
@@ -861,6 +885,7 @@ export const FeesPage = () => {
                 style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
                 value={classFilter}
                 onChange={(e) => setClassFilter(e.target.value)}
+                disabled={loadingSummaries}
               >
                 <option value="All">All Classes</option>
                 {distinctClasses.map((cls) => (
@@ -876,6 +901,7 @@ export const FeesPage = () => {
                 style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
                 value={mainStatusFilter}
                 onChange={(e) => setMainStatusFilter(e.target.value)}
+                disabled={loadingSummaries}
               >
                 <option value="All">All Statuses</option>
                 <option value="Cleared">Cleared</option>
@@ -909,6 +935,7 @@ export const FeesPage = () => {
                 }}
                 value={mainSearchTerm}
                 onChange={(e) => setMainSearchTerm(e.target.value)}
+                disabled={loadingSummaries}
               />
             </div>
           </div>
@@ -940,7 +967,11 @@ export const FeesPage = () => {
                 Class Billing Summary
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Showing {filteredClassSummaries.length} of {classSummaries.length} classes
+                {loadingSummaries ? (
+                  <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>Loading...</span>
+                ) : (
+                  `Showing ${filteredClassSummaries.length} of ${classSummaries.length} classes`
+                )}
               </div>
             </div>
 
@@ -961,11 +992,23 @@ export const FeesPage = () => {
                 </thead>
                 <tbody>
                   {loadingSummaries ? (
+                    <BillingTableSkeleton rowCount={7} />
+                  ) : summaryError ? (
                     <tr>
-                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                          <RotateCcw size={22} className="animate-spin text-primary" />
-                          <span style={{ fontSize: '0.9rem' }}>Loading billing data...</span>
+                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#b91c1c' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.65rem' }}>
+                          <AlertTriangle size={30} style={{ color: '#ef4444' }} />
+                          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                            {summaryError}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.25rem' }}
+                            onClick={loadClassSummaries}
+                          >
+                            <RotateCcw size={14} /> Try Again
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1263,62 +1306,129 @@ export const FeesPage = () => {
         <div>
           {/* Breadcrumb & Top Bar */}
           <div style={{ marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+            {/* ROW 1: Breadcrumb */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                color: 'var(--text-muted)',
+                fontSize: '0.875rem',
+                marginBottom: '0.75rem',
+                flexWrap: 'wrap',
+              }}
+            >
               <button
                 type="button"
                 onClick={handleBackToClasses}
-                style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
               >
                 Finance
               </button>
-              <span>/</span>
+              <span style={{ color: 'var(--text-muted)', opacity: 0.6 }}>/</span>
               <button
                 type="button"
                 onClick={handleBackToClasses}
-                style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
               >
                 Billing & Fee Management
               </button>
-              <span>/</span>
-              <span style={{ color: 'var(--text-main)', fontWeight: 700 }}>{selectedClass}</span>
+              <span style={{ color: 'var(--text-muted)', opacity: 0.6 }}>/</span>
+              <span style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.875rem' }}>
+                {selectedClass}
+              </span>
             </div>
 
+            {/* ROW 2: Back to Summary Button (compact secondary button above title) */}
+            <div style={{ marginBottom: '0.85rem' }}>
+              <button
+                type="button"
+                onClick={handleBackToClasses}
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  height: '38px',
+                  padding: '0 0.85rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer',
+                  boxShadow: 'var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05))',
+                }}
+              >
+                <ArrowLeft size={15} /> Back to Summary
+              </button>
+            </div>
+
+            {/* ROW 3 & Action Controls: Title, Description, and Header Buttons */}
             <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 flexWrap: 'wrap',
                 gap: '1rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <button
-                  type="button"
-                  onClick={handleBackToClasses}
-                  className="btn btn-secondary"
+              <div style={{ flex: '1 1 320px' }}>
+                <h1
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    padding: '0.45rem 0.8rem',
-                    fontSize: '0.825rem',
+                    fontSize: '1.85rem',
+                    fontWeight: 800,
+                    margin: 0,
+                    color: 'var(--text-main)',
+                    lineHeight: 1.25,
+                    letterSpacing: '-0.02em',
                   }}
                 >
-                  <ArrowLeft size={15} /> Back to Summary
-                </button>
-                <div>
-                  <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>
-                    {selectedClass} — Student Billing Records
-                  </h1>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.825rem', margin: '2px 0 0' }}>
-                    Active enrolled students in {selectedClass} and detailed fee breakdown.
-                  </p>
-                </div>
+                  {selectedClass} — Student Billing Records
+                </h1>
+                <p
+                  style={{
+                    color: 'var(--text-muted)',
+                    fontSize: '0.95rem',
+                    margin: '0.35rem 0 0',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Active enrolled students in {selectedClass} and detailed fee breakdown.
+                </p>
               </div>
 
               {/* Quick Actions for Class */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                  flexWrap: 'wrap',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => handleOpenBulkForClass(selectedClass)}
@@ -1326,10 +1436,12 @@ export const FeesPage = () => {
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.4rem',
+                    gap: '0.45rem',
                     fontWeight: 600,
                     padding: '0.5rem 0.95rem',
-                    fontSize: '0.825rem',
+                    fontSize: '0.85rem',
+                    height: '40px',
+                    borderRadius: 'var(--radius-md)',
                   }}
                 >
                   <Upload size={15} /> Bulk Upload
@@ -1345,10 +1457,12 @@ export const FeesPage = () => {
                   style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.4rem',
+                    gap: '0.45rem',
                     fontWeight: 600,
                     padding: '0.5rem 1rem',
-                    fontSize: '0.825rem',
+                    fontSize: '0.85rem',
+                    height: '40px',
+                    borderRadius: 'var(--radius-md)',
                   }}
                 >
                   <Plus size={15} /> Add Individual Billing
@@ -1364,10 +1478,10 @@ export const FeesPage = () => {
                 backgroundColor: '#fef2f2',
                 border: '1px solid #fecaca',
                 borderRadius: 'var(--radius-md)',
-                padding: '0.85rem 1.25rem',
-                marginBottom: '1.25rem',
+                padding: '0.65rem 1rem',
+                marginBottom: '0.85rem',
                 color: '#991b1b',
-                fontSize: '0.875rem',
+                fontSize: '0.825rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -1387,48 +1501,48 @@ export const FeesPage = () => {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '1rem',
-              marginBottom: '1.25rem',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.75rem',
+              marginBottom: '0.85rem',
             }}
           >
-            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+            <div className="card" style={{ padding: '0.65rem 1rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
                 Enrolled Students
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.15rem' }}>
                 {classMetrics.count}
               </div>
             </div>
 
-            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+            <div className="card" style={{ padding: '0.65rem 1rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
                 Total Invoiced
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.2rem' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.15rem' }}>
                 {formatCurrency(classMetrics.billed)}
               </div>
             </div>
 
-            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+            <div className="card" style={{ padding: '0.65rem 1rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
                 Total Collected
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#047857', marginTop: '0.2rem' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#047857', marginTop: '0.15rem' }}>
                 {formatCurrency(classMetrics.paid)}
               </div>
             </div>
 
-            <div className="card" style={{ padding: '0.9rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+            <div className="card" style={{ padding: '0.65rem 1rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
                 Outstanding Dues
               </div>
               <div
                 style={{
-                  fontSize: '1.35rem',
+                  fontSize: '1.25rem',
                   fontWeight: 700,
                   color: classMetrics.outstanding > 0 ? '#b91c1c' : '#047857',
-                  marginTop: '0.2rem',
+                  marginTop: '0.15rem',
                 }}
               >
                 {formatCurrency(classMetrics.outstanding)}
@@ -1440,11 +1554,11 @@ export const FeesPage = () => {
           <div
             className="card"
             style={{
-              padding: '0.85rem 1.25rem',
+              padding: '0.55rem 0.85rem',
               border: '1px solid var(--border-subtle)',
               borderRadius: 'var(--radius-md)',
               backgroundColor: '#ffffff',
-              marginBottom: '1.25rem',
+              marginBottom: '0.85rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -1452,7 +1566,7 @@ export const FeesPage = () => {
               gap: '0.75rem',
             }}
           >
-            <div style={{ position: 'relative', width: '280px' }}>
+            <div style={{ position: 'relative', width: '260px' }}>
               <Search
                 size={14}
                 style={{
@@ -1468,10 +1582,10 @@ export const FeesPage = () => {
                 placeholder="Search student or roll no..."
                 className="form-input"
                 style={{
-                  paddingLeft: '2.2rem',
+                  paddingLeft: '2.1rem',
                   paddingRight: '0.75rem',
                   fontSize: '0.825rem',
-                  height: '34px',
+                  height: '32px',
                 }}
                 value={classSearchTerm}
                 onChange={(e) => {
@@ -1481,13 +1595,13 @@ export const FeesPage = () => {
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                 Status:
               </span>
               <select
                 className="form-select"
-                style={{ padding: '0.35rem 0.65rem', fontSize: '0.825rem', height: '34px', width: 'auto' }}
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', height: '32px', width: 'auto' }}
                 value={classStudentStatusFilter}
                 onChange={(e) => {
                   setClassStudentStatusFilter(e.target.value);
@@ -1531,14 +1645,7 @@ export const FeesPage = () => {
                 </thead>
                 <tbody>
                   {loadingClassStudents ? (
-                    <tr>
-                      <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                          <RotateCcw size={22} className="animate-spin text-primary" />
-                          <span style={{ fontSize: '0.9rem' }}>Loading class student billing records...</span>
-                        </div>
-                      </td>
-                    </tr>
+                    <BillingTableSkeleton rowCount={6} type="student-billing" />
                   ) : paginatedBillingRows.length === 0 ? (
                     <tr>
                       <td colSpan="9" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
@@ -1607,25 +1714,26 @@ export const FeesPage = () => {
                               {renderStudentStatusBadge(row.status)}
                             </td>
                             <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}>
                                 {/* Record Payment */}
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-secondary"
                                   style={{
-                                    padding: '0.2rem 0.55rem',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 600,
-                                    color: (row.outstandingAmount || 0) > 0 ? '#047857' : 'var(--text-muted)',
+                                    width: '28px',
+                                    height: '28px',
+                                    padding: 0,
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '0.2rem',
+                                    justifyContent: 'center',
+                                    borderRadius: '6px',
+                                    color: (row.outstandingAmount || 0) > 0 ? '#047857' : 'var(--text-muted)',
                                   }}
                                   disabled={!row.feeId || (row.outstandingAmount || 0) <= 0}
                                   onClick={() => openPaymentModal(row)}
                                   title="Record Payment"
                                 >
-                                  <CreditCard size={12} /> Pay
+                                  <CreditCard size={14} />
                                 </button>
 
                                 {/* Payment History */}
@@ -1633,14 +1741,19 @@ export const FeesPage = () => {
                                   type="button"
                                   className="btn btn-sm btn-secondary"
                                   style={{
-                                    padding: '0.2rem 0.45rem',
-                                    fontSize: '0.75rem',
+                                    width: '28px',
+                                    height: '28px',
+                                    padding: 0,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '6px',
                                     color: 'var(--text-muted)',
                                   }}
                                   onClick={() => openHistoryModal(row)}
                                   title="Payment History"
                                 >
-                                  <History size={12} />
+                                  <History size={14} />
                                 </button>
 
                                 {/* Edit Billing */}
@@ -1648,8 +1761,13 @@ export const FeesPage = () => {
                                   type="button"
                                   className="btn btn-sm btn-secondary"
                                   style={{
-                                    padding: '0.2rem 0.45rem',
-                                    fontSize: '0.75rem',
+                                    width: '28px',
+                                    height: '28px',
+                                    padding: 0,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderRadius: '6px',
                                     color: 'var(--primary)',
                                   }}
                                   onClick={() => {
@@ -1658,7 +1776,7 @@ export const FeesPage = () => {
                                   }}
                                   title="Edit Fee Structure"
                                 >
-                                  Edit
+                                  <Pencil size={14} />
                                 </button>
                               </div>
                             </td>
@@ -1774,11 +1892,12 @@ export const FeesPage = () => {
       <BulkBillingUploadModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
-        selectedClass={bulkModalClass || selectedClass}
+        selectedClass={bulkModalClass}
         onSuccess={() => {
           loadClassSummaries();
           if (selectedClass) loadStudentBillingForClass(selectedClass);
           loadRecentPayments();
+          loadAllActiveStudents();
         }}
       />
 
@@ -1786,14 +1905,15 @@ export const FeesPage = () => {
       <IndividualBillingModal
         isOpen={isIndividualModalOpen}
         onClose={() => setIsIndividualModalOpen(false)}
-        selectedClass={selectedClass || (distinctClasses[0] || 'Class 10')}
-        activeStudents={activeStudentsInClass}
+        selectedClass={selectedClass || 'All Classes'}
+        activeStudents={selectedClass ? activeStudentsInClass : allActiveStudents}
         existingBillingRows={studentBillingRows}
         initialStudent={individualModalStudent}
         onSuccess={() => {
           loadClassSummaries();
           if (selectedClass) loadStudentBillingForClass(selectedClass);
           loadRecentPayments();
+          loadAllActiveStudents();
         }}
       />
 

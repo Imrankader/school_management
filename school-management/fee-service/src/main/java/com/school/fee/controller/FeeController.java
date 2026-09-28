@@ -49,12 +49,24 @@ public class FeeController {
         return ResponseEntity.ok(ApiResponse.success(rows));
     }
 
+<<<<<<< HEAD
     /** GET /api/fees/template and /api/fees/template/{className} — Download pre-filled Excel template (multi-class or single class) */
     @GetMapping({"/template", "/template/{className}"})
     public ResponseEntity<byte[]> downloadBillingTemplate(
             @PathVariable(value = "className", required = false) String className,
             @RequestParam(value = "className", required = false) String queryClassName) {
         String targetClass = className != null && !className.isBlank() ? className : queryClassName;
+=======
+    /** GET /api/fees/template/{className} or /api/fees/template?className=... or /api/fees/excel/template — Download pre-filled Excel template for a class */
+    @GetMapping({"/template/{className}", "/template", "/excel/template"})
+    public ResponseEntity<byte[]> downloadBillingTemplate(
+            @PathVariable(value = "className", required = false) String pathClassName,
+            @RequestParam(value = "className", required = false) String queryClassName) {
+        String className = pathClassName != null && !pathClassName.trim().isEmpty() ? pathClassName.trim() : queryClassName;
+        if (className == null || className.trim().isEmpty()) {
+            className = "ALL";
+        }
+>>>>>>> 2703f6f (student and billing chnages)
         try {
             byte[] excelBytes = feeExcelService.generateTemplate(targetClass);
             HttpHeaders headers = new HttpHeaders();
@@ -72,16 +84,25 @@ public class FeeController {
         }
     }
 
+<<<<<<< HEAD
     /** POST /api/fees/bulk-upload — Atomic bulk upload of billing records (Multi-class supported) */
+=======
+    /** POST /api/fees/bulk-upload — Atomic bulk upload of billing records (class-specific or ALL classes) */
+>>>>>>> 2703f6f (student and billing chnages)
     @PostMapping("/bulk-upload")
     public ResponseEntity<ApiResponse<BulkUploadBillingResult>> bulkUploadBilling(
             @RequestParam(value = "className", required = false) String className,
             @RequestParam("file") MultipartFile file) {
+        String targetClass = (className != null && !className.trim().isEmpty()) ? className.trim() : "ALL";
         try {
-            BulkUploadBillingResult result = feeExcelService.processBulkUpload(className, file);
+            BulkUploadBillingResult result = feeExcelService.processBulkUpload(targetClass, file);
             return ResponseEntity.ok(ApiResponse.success(result.getMessage(), result));
         } catch (Exception e) {
+<<<<<<< HEAD
             log.error("Bulk billing upload failed: {}", e.getMessage());
+=======
+            log.error("Bulk billing upload failed for {}: {}", targetClass, e.getMessage());
+>>>>>>> 2703f6f (student and billing chnages)
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Bulk upload processing failed: " + e.getMessage()));
         }

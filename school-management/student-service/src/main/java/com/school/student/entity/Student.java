@@ -45,6 +45,15 @@ public class Student {
 
     private String contactNumber;
 
+    @Column(name = "father_mobile_number")
+    private String fatherMobileNumber;
+
+    @Column(name = "mother_mobile_number")
+    private String motherMobileNumber;
+
+    @Column(name = "guardian_mobile_number")
+    private String guardianMobileNumber;
+
     private String address;
 
     private String bloodGroup;

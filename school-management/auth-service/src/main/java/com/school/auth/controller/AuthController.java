@@ -45,6 +45,15 @@ public class AuthController {
     }
 
     /**
+     * POST /api/auth/parent-login — Authenticate parent via phone number + password.
+     */
+    @PostMapping("/parent-login")
+    public ResponseEntity<ApiResponse<AuthResponse>> parentLogin(@Valid @RequestBody com.school.auth.dto.ParentLoginRequest request) {
+        AuthResponse authResponse = userService.parentLogin(request);
+        return ResponseEntity.ok(ApiResponse.success("Login successful", authResponse));
+    }
+
+    /**
      * GET /api/auth/parents — Fetch all users with role PARENT (for Admin dropdown).
      */
     @GetMapping("/parents")
