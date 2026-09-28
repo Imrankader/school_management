@@ -84,6 +84,11 @@ public class AcademicClassOrder {
             "LKG", "UKG", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"
     );
 
+    public static final java.util.List<String> DISPLAY_CLASSES = java.util.List.of(
+            "LKG", "UKG", "Class I", "Class II", "Class III", "Class IV", "Class V",
+            "Class VI", "Class VII", "Class VIII", "Class IX", "Class X", "Class XI", "Class XII"
+    );
+
     public static final java.util.List<String> APPLICATION_CLASSES = java.util.List.of(
             "LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5",
             "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"
@@ -104,19 +109,20 @@ public class AcademicClassOrder {
         if (upper.equals("UKG") || upper.equals("U.K.G") || upper.equals("U.K.G.")) return "UKG";
         if (upper.equals("PRE-KG") || upper.equals("PREKG") || upper.equals("NURSERY")) return "LKG";
 
-        // If already Roman numeral
-        if (upper.equals("I")) return "I";
-        if (upper.equals("II")) return "II";
-        if (upper.equals("III")) return "III";
-        if (upper.equals("IV")) return "IV";
-        if (upper.equals("V")) return "V";
-        if (upper.equals("VI")) return "VI";
-        if (upper.equals("VII")) return "VII";
-        if (upper.equals("VIII")) return "VIII";
-        if (upper.equals("IX")) return "IX";
-        if (upper.equals("X")) return "X";
-        if (upper.equals("XI")) return "XI";
-        if (upper.equals("XII")) return "XII";
+        // If already Roman numeral (with optional CLASS / GRADE / STD prefix)
+        String cleanUpper = upper.replaceFirst("^(?:CLASS|GRADE|STD|STANDARD)\\s+", "");
+        if (cleanUpper.equals("I")) return "I";
+        if (cleanUpper.equals("II")) return "II";
+        if (cleanUpper.equals("III")) return "III";
+        if (cleanUpper.equals("IV")) return "IV";
+        if (cleanUpper.equals("V")) return "V";
+        if (cleanUpper.equals("VI")) return "VI";
+        if (cleanUpper.equals("VII")) return "VII";
+        if (cleanUpper.equals("VIII")) return "VIII";
+        if (cleanUpper.equals("IX")) return "IX";
+        if (cleanUpper.equals("X")) return "X";
+        if (cleanUpper.equals("XI")) return "XI";
+        if (cleanUpper.equals("XII")) return "XII";
 
         Matcher matcher = CLASS_NUM_PATTERN.matcher(upper);
         if (matcher.find()) {
@@ -155,18 +161,19 @@ public class AcademicClassOrder {
         if (upper.equals("UKG") || upper.equals("U.K.G") || upper.equals("U.K.G.")) return "UKG";
         if (upper.equals("PRE-KG") || upper.equals("PREKG") || upper.equals("NURSERY")) return "LKG";
 
-        if (upper.equals("I")) return "Class 1";
-        if (upper.equals("II")) return "Class 2";
-        if (upper.equals("III")) return "Class 3";
-        if (upper.equals("IV")) return "Class 4";
-        if (upper.equals("V")) return "Class 5";
-        if (upper.equals("VI")) return "Class 6";
-        if (upper.equals("VII")) return "Class 7";
-        if (upper.equals("VIII")) return "Class 8";
-        if (upper.equals("IX")) return "Class 9";
-        if (upper.equals("X")) return "Class 10";
-        if (upper.equals("XI")) return "Class 11";
-        if (upper.equals("XII")) return "Class 12";
+        String cleanUpper = upper.replaceFirst("^(?:CLASS|GRADE|STD|STANDARD)\\s+", "");
+        if (cleanUpper.equals("I")) return "Class 1";
+        if (cleanUpper.equals("II")) return "Class 2";
+        if (cleanUpper.equals("III")) return "Class 3";
+        if (cleanUpper.equals("IV")) return "Class 4";
+        if (cleanUpper.equals("V")) return "Class 5";
+        if (cleanUpper.equals("VI")) return "Class 6";
+        if (cleanUpper.equals("VII")) return "Class 7";
+        if (cleanUpper.equals("VIII")) return "Class 8";
+        if (cleanUpper.equals("IX")) return "Class 9";
+        if (cleanUpper.equals("X")) return "Class 10";
+        if (cleanUpper.equals("XI")) return "Class 11";
+        if (cleanUpper.equals("XII")) return "Class 12";
 
         Matcher matcher = CLASS_NUM_PATTERN.matcher(upper);
         if (matcher.find()) {
@@ -177,6 +184,31 @@ public class AcademicClassOrder {
         }
 
         return trimmed;
+    }
+
+    /**
+     * Map any class name format to standard UI display format:
+     * LKG, UKG, Class I, Class II, ..., Class XII.
+     */
+    public static String toDisplayClassName(String className) {
+        if (className == null || className.trim().isBlank()) return "";
+        String excel = toExcelClassName(className);
+        if ("LKG".equalsIgnoreCase(excel) || "UKG".equalsIgnoreCase(excel)) {
+            return excel.toUpperCase();
+        }
+        return "Class " + excel;
+    }
+
+    /**
+     * Checks if promotion from currentClass to requestedClass is valid.
+     * Must be strictly higher rank.
+     */
+    public static boolean isPromotionValid(String currentClass, String requestedClass) {
+        if (currentClass == null || requestedClass == null) return false;
+        int currentRank = getClassRank(currentClass);
+        int requestedRank = getClassRank(requestedClass);
+        if (currentRank >= 999 || requestedRank >= 999) return false;
+        return requestedRank > currentRank;
     }
 
     /**

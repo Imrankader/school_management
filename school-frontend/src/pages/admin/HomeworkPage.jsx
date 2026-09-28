@@ -3,6 +3,7 @@ import { homeworkService } from '../../services/homeworkService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { BookOpen, Plus, Trash2, Calendar, Edit2, Filter } from 'lucide-react';
+import { CLASS_CONFIG, toDisplayClassName, compareAcademicClasses } from '../../utils/academicClassOrder';
 
 export const HomeworkPage = () => {
   const [homeworkList, setHomeworkList] = useState([]);
@@ -112,7 +113,7 @@ export const HomeworkPage = () => {
     ? homeworkList
     : homeworkList.filter(h => h.className === classFilter);
 
-  const uniqueClasses = Array.from(new Set(homeworkList.map(h => h.className).filter(Boolean)));
+  const uniqueClasses = Array.from(new Set(homeworkList.map(h => h.className).filter(Boolean))).sort(compareAcademicClasses);
 
   return (
     <div className="page-container">
@@ -140,7 +141,7 @@ export const HomeworkPage = () => {
         >
           <option value="ALL">All Classes ({homeworkList.length})</option>
           {uniqueClasses.map(c => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c} value={c}>{toDisplayClassName(c)}</option>
           ))}
         </select>
       </div>
@@ -174,7 +175,7 @@ export const HomeworkPage = () => {
                     <td style={{ fontWeight: 600 }}>{hw.title}</td>
                     <td>
                       <span className="badge badge-primary">
-                        {hw.className} {hw.section ? `(${hw.section})` : ''}
+                        {toDisplayClassName(hw.className)} {hw.section ? `(${hw.section})` : ''}
                       </span>
                     </td>
                     <td style={{ maxWidth: '300px', whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
@@ -238,14 +239,17 @@ export const HomeworkPage = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Class Name *</label>
-              <input
-                type="text"
+              <select
                 className="form-control"
                 required
-                placeholder="e.g. Class 10"
                 value={createForm.className}
                 onChange={(e) => setCreateForm({ ...createForm, className: e.target.value })}
-              />
+              >
+                <option value="" disabled>Select Class</option>
+                {CLASS_CONFIG.map((c) => (
+                  <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Section</label>
@@ -311,13 +315,17 @@ export const HomeworkPage = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Class Name *</label>
-              <input
-                type="text"
+              <select
                 className="form-control"
                 required
                 value={editForm.className}
                 onChange={(e) => setEditForm({ ...editForm, className: e.target.value })}
-              />
+              >
+                <option value="" disabled>Select Class</option>
+                {CLASS_CONFIG.map((c) => (
+                  <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Section</label>

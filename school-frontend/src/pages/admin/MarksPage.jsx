@@ -21,6 +21,7 @@ import {
   Search,
   ChevronDown
 } from 'lucide-react';
+import { CLASS_CONFIG, toDisplayClassName, compareAcademicClasses } from '../../utils/academicClassOrder';
 
 export const MarksPage = () => {
   const { user, isAdmin, isTeacher } = useAuth();
@@ -139,8 +140,9 @@ export const MarksPage = () => {
         classList = rawClasses.data.filter(Boolean);
       }
       if (classList.length === 0) {
-        classList = ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10', 'Class 11', 'Class 12'];
+        classList = CLASS_CONFIG.map((c) => c.internalValue);
       }
+      classList = [...classList].sort(compareAcademicClasses);
       setClasses(classList);
 
       let examList = [];
@@ -807,8 +809,9 @@ export const MarksPage = () => {
                   value={entryClass}
                   onChange={(e) => setEntryClass(e.target.value)}
                 >
+                  <option value="" disabled>Select Class</option>
                   {classes.map(c => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>{toDisplayClassName(c)}</option>
                   ))}
                 </select>
               </div>
@@ -1031,9 +1034,9 @@ export const MarksPage = () => {
                   value={viewClass}
                   onChange={(e) => setViewClass(e.target.value)}
                 >
-                  <option value="">All Classes</option>
+                  <option value="">Select Class</option>
                   {classes.map(c => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>{toDisplayClassName(c)}</option>
                   ))}
                 </select>
               </div>
@@ -1308,7 +1311,7 @@ export const MarksPage = () => {
                   >
                     <option value="">Select Class</option>
                     {classes.map(c => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>{toDisplayClassName(c)}</option>
                     ))}
                   </select>
                 </div>

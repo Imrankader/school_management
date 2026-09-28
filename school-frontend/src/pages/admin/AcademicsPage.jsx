@@ -3,6 +3,7 @@ import { academicService } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { BookOpen, Award, Calendar, Plus } from 'lucide-react';
+import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
 
 export const AcademicsPage = () => {
   const [activeTab, setActiveTab] = useState('classes'); // 'classes' | 'subjects' | 'exams'
@@ -168,7 +169,7 @@ export const AcademicsPage = () => {
                 classes.map((c) => (
                   <tr key={c.id}>
                     <td><strong>#{c.id}</strong></td>
-                    <td style={{ fontWeight: 600 }}>{c.name}</td>
+                    <td style={{ fontWeight: 600 }}>{toDisplayClassName(c.name)}</td>
                     <td><span className="badge badge-primary">Section {c.section}</span></td>
                     <td>
                       {subjects.filter((s) => s.classId === c.id).length} subjects
@@ -264,14 +265,17 @@ export const AcademicsPage = () => {
         <form id="classForm" onSubmit={handleCreateClass}>
           <div className="form-group">
             <label className="form-label">Class Name</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="e.g. Grade 10"
+            <select
+              className="form-select"
               required
               value={classForm.name}
               onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
-            />
+            >
+              <option value="" disabled>Select Class</option>
+              {CLASS_CONFIG.map((c) => (
+                <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
             <label className="form-label">Section</label>
@@ -331,7 +335,7 @@ export const AcademicsPage = () => {
             >
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} - Section {c.section}
+                  {toDisplayClassName(c.name)} - Section {c.section}
                 </option>
               ))}
             </select>
@@ -382,7 +386,7 @@ export const AcademicsPage = () => {
             >
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} - Section {c.section}
+                  {toDisplayClassName(c.name)} - Section {c.section}
                 </option>
               ))}
             </select>

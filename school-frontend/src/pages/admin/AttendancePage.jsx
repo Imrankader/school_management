@@ -3,6 +3,7 @@ import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { Users, CalendarCheck, UserCheck, UserX, AlertTriangle, X } from 'lucide-react';
 import api from '../../services/api'; // Or use native fetch if api is different
+import { CLASS_CONFIG, toDisplayClassName, compareAcademicClasses } from '../../utils/academicClassOrder';
 
 export const AttendancePage = () => {
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -129,11 +130,22 @@ export const AttendancePage = () => {
             <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '200px' }}>
               <label className="form-label">Class</label>
               <select className="form-input" value={classId} onChange={(e) => setClassId(e.target.value)}>
-                <option value="">All Classes</option>
-                {classes.map(c => (
-                  <option key={c.id} value={c.id}>{c.className}</option>
-                ))}
-                {classes.length === 0 && <option value="Class 10">Class 10</option>}
+                <option value="">Select Class</option>
+                {classes.length > 0 ? (
+                  [...classes]
+                    .sort((a, b) => compareAcademicClasses(a.className || a.name, b.className || b.name))
+                    .map((c) => (
+                      <option key={c.id || c.className || c.name} value={c.id || c.className || c.name}>
+                        {toDisplayClassName(c.className || c.name)}
+                      </option>
+                    ))
+                ) : (
+                  CLASS_CONFIG.map((c) => (
+                    <option key={c.internalValue} value={c.internalValue}>
+                      {c.displayLabel}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
             

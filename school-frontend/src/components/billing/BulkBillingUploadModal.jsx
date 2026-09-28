@@ -11,6 +11,7 @@ import {
   FileDown,
   RefreshCw
 } from 'lucide-react';
+import { toDisplayClassName } from '../../utils/academicClassOrder';
 
 export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSuccess }) => {
   const [file, setFile] = useState(null);
@@ -142,7 +143,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
 
   const isAllClasses = !selectedClass || selectedClass === 'ALL' || selectedClass === 'All Classes' || selectedClass === '';
   const targetClassParam = isAllClasses ? 'ALL' : selectedClass;
-  const displayClassName = isAllClasses ? 'All Classes' : selectedClass;
+  const displayClassName = isAllClasses ? 'All Classes' : toDisplayClassName(selectedClass);
 
   const handleDownloadTemplate = async () => {
     try {
@@ -159,7 +160,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
       link.click();
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
-      addToast(isAllClasses ? 'Downloaded billing template for all active students' : `Downloaded billing template for ${selectedClass}`, 'success');
+      addToast(isAllClasses ? 'Downloaded billing template for all active students' : `Downloaded billing template for ${displayClassName}`, 'success');
     } catch (err) {
       console.error('Failed to download billing template', err);
       addToast('Failed to download billing template file', 'error');
@@ -293,13 +294,13 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
             </div>
             <div>
               <h3 className="card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                Bulk Billing Upload {isAllClasses ? '— All Classes' : `— ${selectedClass}`}
+                Bulk Billing Upload {isAllClasses ? '— All Classes' : `— ${displayClassName}`}
               </h3>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 {isAllClasses ? (
                   <>Scope: <strong style={{ color: 'var(--primary)' }}>All Active Students across All Classes</strong></>
                 ) : (
-                  <>Target Class: <strong style={{ color: 'var(--primary)' }}>{selectedClass}</strong> (Active Students Only)</>
+                  <>Target Class: <strong style={{ color: 'var(--primary)' }}>{displayClassName}</strong> (Active Students Only)</>
                 )}
               </div>
             </div>
@@ -324,7 +325,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
                 transition: 'all 0.2s',
                 boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)',
               }}
-              title={isAllClasses ? 'Download pre-filled Excel template for all active students across all classes' : `Download pre-filled Excel template for active ${selectedClass} students`}
+              title={isAllClasses ? 'Download pre-filled Excel template for all active students across all classes' : `Download pre-filled Excel template for active ${displayClassName} students`}
             >
               <FileSpreadsheet size={16} /> Download Template
             </button>

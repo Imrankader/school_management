@@ -5,6 +5,7 @@ import com.school.common.exception.ResourceNotFoundException;
 import com.school.student.dto.StudentDTO;
 import com.school.student.entity.Student;
 import com.school.student.repository.StudentRepository;
+import com.school.student.util.AcademicClassOrder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -144,6 +145,14 @@ public class StudentService {
     }
 
     public StudentDTO createStudent(StudentDTO dto) {
+        if (dto.getClassName() == null || dto.getClassName().isBlank()) {
+            throw new BadRequestException("Class name is required");
+        }
+        if (!AcademicClassOrder.isValidClass(dto.getClassName())) {
+            throw new BadRequestException("Invalid class name: " + dto.getClassName());
+        }
+        dto.setClassName(AcademicClassOrder.toApplicationClassName(dto.getClassName()));
+
         if ((dto.getFatherName() == null || dto.getFatherName().isBlank()) &&
             (dto.getMotherName() == null || dto.getMotherName().isBlank()) &&
             (dto.getGuardianName() == null || dto.getGuardianName().isBlank())) {
@@ -172,6 +181,21 @@ public class StudentService {
         Student existing = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", "id", id));
 
+        // Validate Class Promotion Rule: allow current class and higher classes, reject lower classes
+        if (dto.getClassName() != null && !dto.getClassName().trim().isBlank()) {
+            String requestedClass = dto.getClassName().trim();
+            String currentClass = existing.getClassName();
+
+            int currentRank = AcademicClassOrder.getClassRank(currentClass);
+            int requestedRank = AcademicClassOrder.getClassRank(requestedClass);
+
+            if (requestedRank < currentRank) {
+                throw new BadRequestException("Student cannot be demoted to a lower class.");
+            }
+
+            existing.setClassName(AcademicClassOrder.toApplicationClassName(requestedClass));
+        }
+
         if (studentRepository.isDuplicateStudentExcludingId(id, dto.getName(), dto.getFatherName(), dto.getMotherName(), dto.getGuardianName(), dto.getAddress(), dto.getDateOfBirth())) {
             throw new BadRequestException("A student with the same Name, Father Name, Address and DOB already exists.");
         }
@@ -180,7 +204,6 @@ public class StudentService {
         existing.setDateOfBirth(dto.getDateOfBirth());
         existing.setGender(dto.getGender());
         existing.setParentId(dto.getParentId());
-        existing.setClassName(dto.getClassName());
         existing.setSection(dto.getSection());
         existing.setFatherName(dto.getFatherName());
         existing.setMotherName(dto.getMotherName());

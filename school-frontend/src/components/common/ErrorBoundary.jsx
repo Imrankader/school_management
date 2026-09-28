@@ -35,7 +35,7 @@ export class ErrorBoundary extends React.Component {
           >
             Refresh Page
           </button>
-          {process.env.NODE_ENV === 'development' && (
+          {import.meta.env.DEV && (
             <div style={{ marginTop: '2rem', textAlign: 'left', background: '#f1f5f9', padding: '1rem', borderRadius: '4px', overflowX: 'auto' }}>
               <pre style={{ color: '#ef4444' }}>{this.state.error?.toString()}</pre>
               <pre style={{ fontSize: '0.8rem', color: '#64748b' }}>{this.state.errorInfo?.componentStack}</pre>

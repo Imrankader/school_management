@@ -32,7 +32,7 @@ import {
   Users,
   Pencil
 } from 'lucide-react';
-import { getClassAcademicRank, compareAcademicClasses } from '../../utils/academicClassOrder';
+import { getClassAcademicRank, compareAcademicClasses, toDisplayClassName } from '../../utils/academicClassOrder';
 
 export const FeesPage = () => {
   // Navigation View: 'classes' (main ERP overview) | 'class-details' (detailed class breakdown)
@@ -890,7 +890,7 @@ export const FeesPage = () => {
                 <option value="All">All Classes</option>
                 {distinctClasses.map((cls) => (
                   <option key={cls} value={cls}>
-                    {cls}
+                    {toDisplayClassName(cls)}
                   </option>
                 ))}
               </select>
@@ -1056,7 +1056,7 @@ export const FeesPage = () => {
                                 fontWeight: 600,
                               }}
                             >
-                              {item.className}
+                              {toDisplayClassName(item.className)}
                             </span>
                           </td>
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 600, color: 'var(--text-main)' }}>
@@ -1133,7 +1133,7 @@ export const FeesPage = () => {
                                   fontSize: '0.775rem',
                                   color: 'var(--text-muted)',
                                 }}
-                                title={`Upload Excel for ${item.className}`}
+                                title={`Upload Excel for ${toDisplayClassName(item.className)}`}
                                 onClick={() => handleOpenBulkForClass(item.className)}
                               >
                                 <Upload size={12} />
@@ -1355,7 +1355,7 @@ export const FeesPage = () => {
               </button>
               <span style={{ color: 'var(--text-muted)', opacity: 0.6 }}>/</span>
               <span style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '0.875rem' }}>
-                {selectedClass}
+                {toDisplayClassName(selectedClass)}
               </span>
             </div>
 
@@ -1406,7 +1406,7 @@ export const FeesPage = () => {
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  {selectedClass} — Student Billing Records
+                  {toDisplayClassName(selectedClass)} — Student Billing Records
                 </h1>
                 <p
                   style={{
@@ -1416,7 +1416,7 @@ export const FeesPage = () => {
                     lineHeight: 1.5,
                   }}
                 >
-                  Active enrolled students in {selectedClass} and detailed fee breakdown.
+                  Active enrolled students in {toDisplayClassName(selectedClass)} and detailed fee breakdown.
                 </p>
               </div>
 
@@ -1656,7 +1656,7 @@ export const FeesPage = () => {
                           </span>
                           <span style={{ fontSize: '0.825rem' }}>
                             {studentBillingRows.length === 0
-                              ? `No active students are currently enrolled in ${selectedClass}.`
+                              ? `No active students are currently enrolled in ${toDisplayClassName(selectedClass)}.`
                               : 'No students match your filter criteria.'}
                           </span>
                         </div>

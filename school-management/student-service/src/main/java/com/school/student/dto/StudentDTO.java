@@ -31,7 +31,6 @@ public class StudentDTO {
 
     private Long parentId;
 
-    @NotBlank(message = "Class name is required")
     private String className;
 
     private String section;

@@ -3,7 +3,13 @@ import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { BulkUploadModal } from '../../components/students/BulkUploadModal';
-import { getClassAcademicRank, compareAcademicClasses } from '../../utils/academicClassOrder';
+import {
+  getClassAcademicRank,
+  compareAcademicClasses,
+  CLASS_CONFIG,
+  toDisplayClassName,
+  getAvailableEditClasses
+} from '../../utils/academicClassOrder';
 import {
   Plus,
   Search,
@@ -395,11 +401,36 @@ export const StudentsPage = () => {
       return;
     }
 
+    // Frontend validation: Promotion must be to current class or higher class
+    if (editingStudent) {
+      const availableClasses = getAvailableEditClasses(editingStudent.className);
+      if (!formData.className || !formData.className.trim()) {
+        addToast('Please select a class for the student.', 'error');
+        return;
+      }
+      const isAllowed = availableClasses.some(
+        (c) =>
+          c.internalValue.toLowerCase() === formData.className.trim().toLowerCase() ||
+          c.displayLabel.toLowerCase() === formData.className.trim().toLowerCase()
+      );
+      if (!isAllowed) {
+        addToast('Student cannot be demoted to a lower class.', 'error');
+        return;
+      }
+    } else {
+      if (!formData.className || !formData.className.trim()) {
+        addToast('Please select a class for the student.', 'error');
+        return;
+      }
+    }
+
     try {
+      const targetClassName = formData.className.trim();
+
       const payload = {
         admissionNumber: formData.admNo.trim(),
         name: formData.name.trim(),
-        className: formData.className.trim(),
+        className: targetClassName,
         section: formData.section ? formData.section.trim() : '',
         dateOfBirth: formData.dob || null,
         gender: formData.gender,
@@ -845,7 +876,7 @@ export const StudentsPage = () => {
                             <button
                               type="button"
                               onClick={() => handleOpenClassDetails(s.className)}
-                              title={`Open ${s.className} records`}
+                              title={`Open ${toDisplayClassName(s.className)} records`}
                               style={{
                                 backgroundColor: '#eef2ff',
                                 color: '#3730a3',
@@ -860,7 +891,7 @@ export const StudentsPage = () => {
                                 gap: '0.25rem',
                               }}
                             >
-                              {s.className}{s.section ? ` - ${s.section}` : ''}
+                              {toDisplayClassName(s.className)}{s.section ? ` - ${s.section}` : ''}
                               <ChevronRight size={13} />
                             </button>
                           </td>
@@ -1030,7 +1061,7 @@ export const StudentsPage = () => {
                                 fontWeight: 600,
                               }}
                             >
-                              {item.className}
+                              {toDisplayClassName(item.className)}
                             </span>
                           </td>
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
@@ -1119,7 +1150,7 @@ export const StudentsPage = () => {
             </button>
             <span style={{ color: 'var(--text-muted, #94a3b8)', fontWeight: 400, opacity: 0.6 }}>/</span>
             <span style={{ color: 'var(--text-main, #0f172a)', fontWeight: 700 }}>
-              {selectedClass}
+              {toDisplayClassName(selectedClass)}
             </span>
           </div>
 
@@ -1170,7 +1201,7 @@ export const StudentsPage = () => {
                 letterSpacing: '-0.02em',
               }}
             >
-              {selectedClass} — Student Records
+              {toDisplayClassName(selectedClass)} — Student Records
             </h1>
             <p
               style={{
@@ -1180,7 +1211,7 @@ export const StudentsPage = () => {
                 lineHeight: 1.4,
               }}
             >
-              Active student directory profiles and contact records for {selectedClass}.
+              Active student directory profiles and contact records for {toDisplayClassName(selectedClass)}.
             </p>
           </div>
 
@@ -1320,7 +1351,7 @@ export const StudentsPage = () => {
                     <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                         <RotateCcw size={22} className="animate-spin text-primary" />
-                        <span style={{ fontSize: '0.9rem' }}>Fetching {selectedClass} students...</span>
+                        <span style={{ fontSize: '0.9rem' }}>Fetching {toDisplayClassName(selectedClass)} students...</span>
                       </div>
                     </td>
                   </tr>
@@ -1368,7 +1399,7 @@ export const StudentsPage = () => {
                             fontWeight: 600,
                           }}
                         >
-                          {s.className}{s.section ? ` - ${s.section}` : ''}
+                          {toDisplayClassName(s.className)}{s.section ? ` - ${s.section}` : ''}
                         </span>
                       </td>
                       <td style={{ padding: '0.85rem 1rem' }}>
@@ -1522,14 +1553,48 @@ export const StudentsPage = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Class *</label>
-              <input
-                type="text"
-                className="form-input"
-                required
-                placeholder="e.g. Class 10, LKG, UKG"
-                value={formData.className}
-                onChange={(e) => setFormData({ ...formData, className: e.target.value })}
-              />
+              {editingStudent ? (
+                (() => {
+                  const availableClasses = getAvailableEditClasses(editingStudent.className);
+
+                  return (
+                    <div>
+                      <select
+                        className="form-input"
+                        required
+                        value={formData.className}
+                        onChange={(e) => setFormData({ ...formData, className: e.target.value })}
+                        style={{ width: '100%', cursor: 'pointer' }}
+                      >
+                        <option value="" disabled>Select Class</option>
+                        {availableClasses.map((c) => (
+                          <option key={c.internalValue} value={c.internalValue}>
+                            {c.displayLabel}
+                          </option>
+                        ))}
+                      </select>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: '4px' }}>
+                        Current class: <strong>{toDisplayClassName(editingStudent.className)}</strong>. Allowed: current class and higher classes.
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <select
+                  className="form-input"
+                  required
+                  value={formData.className}
+                  onChange={(e) => setFormData({ ...formData, className: e.target.value })}
+                  style={{ width: '100%', cursor: 'pointer' }}
+                >
+                  <option value="" disabled>Select Class</option>
+                  {CLASS_CONFIG.map((c) => (
+                    <option key={c.internalValue} value={c.internalValue}>
+                      {c.displayLabel}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Section</label>

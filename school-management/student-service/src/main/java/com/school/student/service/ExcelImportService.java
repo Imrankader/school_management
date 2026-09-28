@@ -102,13 +102,13 @@ public class ExcelImportService {
                 && !"ALL CLASSES".equalsIgnoreCase(className.trim());
 
         String targetAppClass = isClassSpecific ? AcademicClassOrder.toApplicationClassName(className) : null;
-        String targetExcelClass = isClassSpecific ? AcademicClassOrder.toExcelClassName(className) : null;
+        String targetDisplayClass = isClassSpecific ? AcademicClassOrder.toDisplayClassName(className) : null;
 
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
             String sheetName = isClassSpecific
-                    ? (targetExcelClass + " Students")
+                    ? (targetDisplayClass + " Students")
                     : "Student Import Template";
             Sheet sheet = workbook.createSheet(sheetName);
 
@@ -214,9 +214,9 @@ public class ExcelImportService {
                     c2.setCellValue(s.getName() != null ? s.getName().trim() : "");
                     c2.setCellStyle(textStyle);
 
-                    // Col 3: Class (Excel format: e.g. "X", "V", "III")
+                    // Col 3: Class (Display format: e.g. "Class X", "Class V", "Class III", "LKG")
                     Cell c3 = r.createCell(3);
-                    c3.setCellValue(targetExcelClass);
+                    c3.setCellValue(targetDisplayClass);
                     c3.setCellStyle(centerTextStyle);
 
                     // Col 4: Section
@@ -304,7 +304,7 @@ public class ExcelImportService {
                     for (int col = 1; col < headers.length; col++) {
                         Cell c = r.createCell(col);
                         if (col == 3) {
-                            c.setCellValue(targetExcelClass);
+                            c.setCellValue(targetDisplayClass);
                             c.setCellStyle(centerTextStyle);
                         } else {
                             c.setCellValue("");
@@ -368,10 +368,10 @@ public class ExcelImportService {
             CellRangeAddressList classRange = new CellRangeAddressList(1, maxValidationRow, 3, 3);
             DataValidationConstraint classConstraint;
             if (isClassSpecific) {
-                classConstraint = dvHelper.createExplicitListConstraint(new String[]{targetExcelClass});
+                classConstraint = dvHelper.createExplicitListConstraint(new String[]{targetDisplayClass});
             } else {
                 classConstraint = dvHelper.createExplicitListConstraint(
-                        AcademicClassOrder.EXCEL_CLASSES.toArray(new String[0])
+                        AcademicClassOrder.DISPLAY_CLASSES.toArray(new String[0])
                 );
             }
             DataValidation classValidation = dvHelper.createValidation(classConstraint, classRange);
@@ -379,9 +379,9 @@ public class ExcelImportService {
             classValidation.setShowErrorBox(true);
             classValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
             if (isClassSpecific) {
-                classValidation.createErrorBox("Class Locked", "This template is locked for " + targetExcelClass + " (" + targetAppClass + "). Changing class is not allowed.");
+                classValidation.createErrorBox("Class Locked", "This template is locked for " + targetDisplayClass + " (" + targetAppClass + "). Changing class is not allowed.");
             } else {
-                classValidation.createErrorBox("Invalid Class", "Please select a valid class from the dropdown (LKG, UKG, I to XII).");
+                classValidation.createErrorBox("Invalid Class", "Please select a valid class from the dropdown (LKG, UKG, Class I to Class XII).");
             }
             sheet.addValidationData(classValidation);
 

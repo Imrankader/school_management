@@ -132,7 +132,7 @@ public class BulkUploadValidationTest {
                 Row firstStudentRow = sheet.getRow(1);
                 assertNotNull(firstStudentRow);
                 assertEquals(1, (int) firstStudentRow.getCell(0).getNumericCellValue());
-                assertEquals("X", firstStudentRow.getCell(3).getStringCellValue(), "Class 10 students must have Class as Roman numeral X");
+                assertEquals("Class X", firstStudentRow.getCell(3).getStringCellValue(), "Class 10 students must have Class as Class X");
             }
 
             // Total data rows = existing students + 50 blank rows
@@ -140,14 +140,14 @@ public class BulkUploadValidationTest {
             assertTrue(totalDataRows >= dbClass10Count + 50,
                     "Total rows should contain at least existing students (" + dbClass10Count + ") plus 50 blank rows");
 
-            // Check blank row has S.No continuing, Class as X, and Adm No & Name empty
+            // Check blank row has S.No continuing, Class as Class X, and Adm No & Name empty
             int blankRowIdx = (int) dbClass10Count + 1;
             Row blankRow = sheet.getRow(blankRowIdx);
             assertNotNull(blankRow);
             assertEquals(blankRowIdx, (int) blankRow.getCell(0).getNumericCellValue(), "S.No must continue sequence");
             assertEquals("", blankRow.getCell(1).getStringCellValue(), "Blank row Adm No must be empty");
             assertEquals("", blankRow.getCell(2).getStringCellValue(), "Blank row Name must be empty");
-            assertEquals("X", blankRow.getCell(3).getStringCellValue(), "Blank row Class must be X for Class 10");
+            assertEquals("Class X", blankRow.getCell(3).getStringCellValue(), "Blank row Class must be Class X for Class 10");
 
             // Verify Data Validations exist on sheet
             List<? extends DataValidation> validations = sheet.getDataValidations();
@@ -307,8 +307,8 @@ public class BulkUploadValidationTest {
 
             row.getCell(1).setCellValue("NEW-ADM-9901");
             row.getCell(2).setCellValue("Ananya Sen");
-            // Col 3 already has "X"
-            assertEquals("X", row.getCell(3).getStringCellValue());
+            // Col 3 already has "Class X"
+            assertEquals("Class X", row.getCell(3).getStringCellValue());
             row.getCell(4).setCellValue("A");
             row.getCell(5).setCellValue("10-06-2009");
             row.getCell(6).setCellValue("Female");

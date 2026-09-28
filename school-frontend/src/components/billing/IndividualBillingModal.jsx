@@ -3,6 +3,7 @@ import { feeService } from '../../services/feeService';
 import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { DollarSign, UserCheck, Calculator, X, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { toDisplayClassName } from '../../utils/academicClassOrder';
 
 export const IndividualBillingModal = ({
   isOpen,
@@ -396,7 +397,7 @@ export const IndividualBillingModal = ({
                         fontSize: '0.85rem',
                       }}
                     >
-                      {currentStudent?.className || selectedClass || 'Class N/A'}
+                      {toDisplayClassName(currentStudent?.className || selectedClass) || 'Class N/A'}
                     </span>
                   </div>
                 </div>
@@ -423,7 +424,7 @@ export const IndividualBillingModal = ({
                     <option value="" disabled>Select active student</option>
                     {(studentList.length > 0 ? studentList : activeStudents).map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} ({s.admissionNumber || `ID: ${s.id}`}) — {s.className || 'Class N/A'}
+                        {s.name} ({s.admissionNumber || `ID: ${s.id}`}) — {toDisplayClassName(s.className) || 'Class N/A'}
                       </option>
                     ))}
                   </select>
@@ -468,7 +469,7 @@ export const IndividualBillingModal = ({
                           fontSize: '0.8rem',
                         }}
                       >
-                        {selectedStudentObj.className || 'Class N/A'}
+                        {toDisplayClassName(selectedStudentObj.className) || 'Class N/A'}
                       </span>
                     </div>
                   </div>

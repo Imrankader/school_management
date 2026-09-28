@@ -26,6 +26,7 @@ import {
   XCircle,
   Bell,
 } from 'lucide-react';
+import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
 
 export const TeacherDashboard = () => {
   const [activeTab, setActiveTab] = useState('attendance'); // 'attendance' | 'marks' | 'homework' | 'holidays' | 'leave' | 'notifications'
@@ -545,7 +546,7 @@ export const TeacherDashboard = () => {
                   homeworkList.map((hw) => (
                     <tr key={hw.id}>
                       <td style={{ fontWeight: 600 }}>{hw.title}</td>
-                      <td><span className="badge badge-primary">{hw.className} {hw.section || ''}</span></td>
+                      <td><span className="badge badge-primary">{toDisplayClassName(hw.className)} {hw.section || ''}</span></td>
                       <td style={{ maxWidth: '300px', fontSize: '0.9rem' }}>{hw.description}</td>
                       <td>
                         <span className="badge badge-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -740,13 +741,17 @@ export const TeacherDashboard = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Class Name *</label>
-              <input
-                type="text"
+              <select
                 className="form-control"
                 required
                 value={hwForm.className}
                 onChange={(e) => setHwForm({ ...hwForm, className: e.target.value })}
-              />
+              >
+                <option value="" disabled>Select Class</option>
+                {CLASS_CONFIG.map((c) => (
+                  <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Section</label>

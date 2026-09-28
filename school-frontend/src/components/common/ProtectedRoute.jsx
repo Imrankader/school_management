@@ -18,11 +18,14 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
+  const currentRole = user?.role ? user.role.toUpperCase().replace(/^ROLE_/, '') : '';
+  const normalizedAllowed = (allowedRoles || []).map(r => r.toUpperCase().replace(/^ROLE_/, ''));
+
+  if (normalizedAllowed.length > 0 && !normalizedAllowed.includes(currentRole)) {
     // Redirect to their respective default home
-    if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
-    if (user?.role === 'TEACHER') return <Navigate to="/teacher" replace />;
-    if (user?.role === 'PARENT') return <Navigate to="/parent" replace />;
+    if (currentRole === 'ADMIN') return <Navigate to="/admin" replace />;
+    if (currentRole === 'TEACHER') return <Navigate to="/teacher" replace />;
+    if (currentRole === 'PARENT') return <Navigate to="/parent" replace />;
     return <Navigate to="/login" replace />;
   }
 

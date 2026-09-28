@@ -31,12 +31,23 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 // Index Landing Resolver
 const HomeRedirect = () => {
   const { user, isAuthenticated, loading } = useAuth();
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', color: '#fff', fontFamily: 'sans-serif' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>Loading EduCore Portal...</span>
+        </div>
+      </div>
+    );
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
-  if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
-  if (user?.role === 'TEACHER') return <Navigate to="/teacher" replace />;
-  if (user?.role === 'PARENT') return <Navigate to="/parent" replace />;
+  const role = user?.role?.toUpperCase();
+  if (role === 'ADMIN' || role === 'ROLE_ADMIN') return <Navigate to="/admin" replace />;
+  if (role === 'TEACHER' || role === 'ROLE_TEACHER') return <Navigate to="/teacher" replace />;
+  if (role === 'PARENT' || role === 'ROLE_PARENT') return <Navigate to="/parent" replace />;
   return <Navigate to="/login" replace />;
 };
 

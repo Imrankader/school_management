@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Info
 } from 'lucide-react';
+import { toDisplayClassName } from '../../utils/academicClassOrder';
 
 /**
  * Natural sort helper for Admission Numbers (e.g. ADM-2, ADM-10, ADM-100)
@@ -216,7 +217,7 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess, targetClass }) => 
       window.URL.revokeObjectURL(url);
       addToast(
         targetClass
-          ? `${targetClass} template with current students downloaded successfully`
+          ? `${toDisplayClassName(targetClass)} template with current students downloaded successfully`
           : 'Template downloaded successfully',
         'success'
       );
@@ -260,7 +261,7 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess, targetClass }) => 
     }
 
     setLoading(true);
-    setLoadingStep(targetClass ? `Validating and syncing ${targetClass} students...` : 'Uploading and validating students...');
+    setLoadingStep(targetClass ? `Validating and syncing ${toDisplayClassName(targetClass)} students...` : 'Uploading and validating students...');
 
     const formData = new FormData();
     formData.append('file', file);
@@ -367,11 +368,11 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess, targetClass }) => 
             </div>
             <div>
               <h3 className="card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-                {targetClass ? `Bulk Student Upload — ${targetClass}` : 'Bulk Student Upload'}
+                {targetClass ? `Bulk Student Upload — ${toDisplayClassName(targetClass)}` : 'Bulk Student Upload'}
               </h3>
               {targetClass && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Class-specific template & synchronization for {targetClass}
+                  Class-specific template & synchronization for {toDisplayClassName(targetClass)}
                 </div>
               )}
             </div>
@@ -396,9 +397,9 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess, targetClass }) => 
                 transition: 'all 0.2s',
                 boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)',
               }}
-              title={targetClass ? `Download template containing current ${targetClass} students` : 'Download standard student import Excel template'}
+              title={targetClass ? `Download template containing current ${toDisplayClassName(targetClass)} students` : 'Download standard student import Excel template'}
             >
-              <FileSpreadsheet size={16} /> {targetClass ? `Download ${targetClass} Template` : 'Download Template'}
+              <FileSpreadsheet size={16} /> {targetClass ? `Download ${toDisplayClassName(targetClass)} Template` : 'Download Template'}
             </button>
 
             <button
