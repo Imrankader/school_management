@@ -43,6 +43,9 @@ public class StudentDTO {
     private String guardianName;
 
     private String contactNumber;
+    private String fatherMobileNumber;
+    private String motherMobileNumber;
+    private String guardianMobileNumber;
 
     private String address;
 
@@ -58,4 +61,16 @@ public class StudentDTO {
     // Write-only password, not returned to frontend
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String password;
+
+    public void setParentLoginPhoneNumber(String parentLoginPhoneNumber) {
+        if (parentLoginPhoneNumber != null && !parentLoginPhoneNumber.isBlank()) {
+            this.phoneNumber = parentLoginPhoneNumber.trim();
+        }
+    }
+
+    public void setParentLoginPassword(String parentLoginPassword) {
+        if (parentLoginPassword != null && !parentLoginPassword.isBlank()) {
+            this.password = parentLoginPassword.trim();
+        }
+    }
 }

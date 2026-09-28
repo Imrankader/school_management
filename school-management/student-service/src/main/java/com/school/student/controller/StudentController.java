@@ -37,12 +37,13 @@ public class StudentController {
     @GetMapping
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> searchStudents(
             @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "className", required = false) String className,
             @RequestParam(value = "status", required = false, defaultValue = "All") String status,
             @RequestParam(value = "page", defaultValue = "1") int page, // UI is 1-based, Spring Data is 0-based
             @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
         
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, pageSize, org.springframework.data.domain.Sort.by("id").descending());
-        org.springframework.data.domain.Page<StudentDTO> studentPage = studentService.searchStudents(search, status, pageable);
+        org.springframework.data.domain.Page<StudentDTO> studentPage = studentService.searchStudents(search, className, status, pageable);
 
         java.util.Map<String, Object> responseData = new java.util.HashMap<>();
         responseData.put("data", studentPage.getContent());
@@ -60,6 +61,12 @@ public class StudentController {
         responseData.put("inactiveStudents", studentService.countInactiveStudents());
 
         return ResponseEntity.ok(ApiResponse.success(responseData));
+    }
+
+    /** GET /api/students/class-summary — Student counts grouped by class in academic order */
+    @GetMapping("/class-summary")
+    public ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> getClassStudentSummaries() {
+        return ResponseEntity.ok(ApiResponse.success(studentService.getClassStudentSummaries()));
     }
 
     /** GET /api/students/classes — Distinct classes existing in Student Directory */
@@ -151,6 +158,18 @@ public class StudentController {
     }
 
     /**
+     * POST /api/students/verify-parent-credentials
+     * Verifies phone number and password for parent authentication.
+     */
+    @PostMapping("/verify-parent-credentials")
+    public ResponseEntity<ApiResponse<com.school.student.dto.ParentAuthResultDTO>> verifyParentCredentials(
+            @RequestBody com.school.student.dto.ParentLoginDTO request) {
+        com.school.student.dto.ParentAuthResultDTO result = studentService.verifyParentCredentials(
+                request.getPhoneNumber(), request.getPassword());
+        return ResponseEntity.ok(ApiResponse.success("Credentials verified successfully", result));
+    }
+
+    /**
      * POST /api/students/import
      * Upload an Excel (.xlsx) file to import students.
      * Duplicate admissionNumber → UPDATE. New → INSERT.
@@ -201,19 +220,52 @@ public class StudentController {
     /**
      * GET /api/students/bulk-template
      * Download the standard Excel template for bulk student import.
+     * When className is specified, includes that class's existing students + blank rows.
      */
     @GetMapping("/bulk-template")
-    public ResponseEntity<byte[]> downloadBulkTemplate() {
+    public ResponseEntity<byte[]> downloadBulkTemplate(@RequestParam(value = "className", required = false) String className) {
         try {
-            byte[] templateBytes = excelImportService.generateTemplate();
+            byte[] templateBytes = excelImportService.generateTemplate(className);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-            headers.setContentDispositionFormData("attachment", "student_import_template.xlsx");
+            String fileName = (className != null && !className.isBlank() && !"ALL".equalsIgnoreCase(className.trim()))
+                    ? (className.trim().replaceAll("[^a-zA-Z0-9_-]", "_") + "_student_template.xlsx")
+                    : "student_import_template.xlsx";
+            headers.setContentDispositionFormData("attachment", fileName);
             headers.setContentLength(templateBytes.length);
             return ResponseEntity.ok().headers(headers).body(templateBytes);
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * POST /api/students/bulk-validate
+     * Dry-run validation of student bulk upload without committing.
+     */
+    @PostMapping("/bulk-validate")
+    public ResponseEntity<ApiResponse<com.school.student.dto.BulkUploadResult>> bulkValidateStudents(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "className", required = false) String className,
+            HttpServletRequest request) {
+
+        String authHeader = request.getHeader("Authorization");
+        String token = jwtDecoder.extractRaw(authHeader);
+        if (token != null && jwtDecoder.isValidToken(token)) {
+            String role = jwtDecoder.getRole(token);
+            if (!"ADMIN".equalsIgnoreCase(role)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error("Access denied: only ADMIN can validate student uploads."));
+            }
+        }
+
+        try {
+            com.school.student.dto.BulkUploadResult result = excelImportService.validateBulkUpload(file, className);
+            return ResponseEntity.ok(ApiResponse.success(result.getMessage(), result));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Bulk upload validation failed: " + e.getMessage()));
         }
     }
 
@@ -224,6 +276,7 @@ public class StudentController {
     @PostMapping("/bulk-upload")
     public ResponseEntity<ApiResponse<com.school.student.dto.BulkUploadResult>> bulkUploadStudents(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "className", required = false) String className,
             HttpServletRequest request) {
 
         String authHeader = request.getHeader("Authorization");
@@ -237,7 +290,7 @@ public class StudentController {
         }
 
         try {
-            com.school.student.dto.BulkUploadResult result = excelImportService.processBulkUpload(file);
+            com.school.student.dto.BulkUploadResult result = excelImportService.processBulkUpload(file, className);
             return ResponseEntity.ok(ApiResponse.success(result.getMessage(), result));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

@@ -2,32 +2,34 @@ package com.school.student.service;
 
 import com.school.student.dto.BulkUploadError;
 import com.school.student.dto.BulkUploadResult;
+import com.school.student.dto.BulkUploadRowDetail;
 import com.school.student.dto.ImportResult;
 import com.school.student.entity.Student;
 import com.school.student.repository.StudentRepository;
+import com.school.student.util.AcademicClassOrder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.sql.Date;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.*;
 
-/**
- * Service for importing students from Excel (.xlsx, .xls) files,
- * generating bulk upload templates, and producing error report workbooks.
- */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -35,13 +37,55 @@ public class ExcelImportService {
 
     private final StudentRepository studentRepository;
 
-    private static final DateTimeFormatter[] DATE_FORMATS = {
-            DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
-            DateTimeFormatter.ofPattern("dd.MM.yyyy"),
-            DateTimeFormatter.ofPattern("MM/dd/yyyy"),
-            DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+    // Exact 16 headers for Clean Excel Template
+    public static final String[] TEMPLATE_HEADERS = {
+            "S.No",
+            "Adm No",
+            "Name",
+            "Class",
+            "Section",
+            "DOB",
+            "Gender",
+            "Father Name",
+            "Mother Name",
+            "Guardian Name",
+            "Father Mobile Number",
+            "Mother Mobile Number",
+            "Guardian Mobile Number",
+            "Address",
+            "Blood Group",
+            "Joining Date"
+    };
+
+    public static final String[] CLASS_SPECIFIC_TEMPLATE_HEADERS = TEMPLATE_HEADERS;
+    public static final String[] MAIN_TEMPLATE_HEADERS = TEMPLATE_HEADERS;
+
+
+    private static final DateTimeFormatter STRICT_DD_MM_YYYY = new DateTimeFormatterBuilder()
+            .appendPattern("dd-MM-uuuu")
+            .toFormatter(Locale.ENGLISH)
+            .withResolverStyle(ResolverStyle.STRICT);
+
+    private static final DateTimeFormatter STRICT_DD_SLASH_MM_YYYY = new DateTimeFormatterBuilder()
+            .appendPattern("dd/MM/uuuu")
+            .toFormatter(Locale.ENGLISH)
+            .withResolverStyle(ResolverStyle.STRICT);
+
+    private static final DateTimeFormatter STRICT_YYYY_MM_DD = new DateTimeFormatterBuilder()
+            .appendPattern("uuuu-MM-dd")
+            .toFormatter(Locale.ENGLISH)
+            .withResolverStyle(ResolverStyle.STRICT);
+
+    private static final DateTimeFormatter STRICT_YYYY_SLASH_MM_DD = new DateTimeFormatterBuilder()
+            .appendPattern("uuuu/MM/dd")
+            .toFormatter(Locale.ENGLISH)
+            .withResolverStyle(ResolverStyle.STRICT);
+
+    private static final DateTimeFormatter[] STRICT_FORMATTERS = {
+            STRICT_DD_MM_YYYY,
+            STRICT_DD_SLASH_MM_YYYY,
+            STRICT_YYYY_MM_DD,
+            STRICT_YYYY_SLASH_MM_DD
     };
 
     // =========================================================================
@@ -49,17 +93,33 @@ public class ExcelImportService {
     // =========================================================================
 
     public byte[] generateTemplate() throws IOException {
+        return generateTemplate(null);
+    }
+
+    public byte[] generateTemplate(String className) throws IOException {
+        boolean isClassSpecific = className != null && !className.isBlank()
+                && !"ALL".equalsIgnoreCase(className.trim())
+                && !"ALL CLASSES".equalsIgnoreCase(className.trim());
+
+        String targetAppClass = isClassSpecific ? AcademicClassOrder.toApplicationClassName(className) : null;
+        String targetExcelClass = isClassSpecific ? AcademicClassOrder.toExcelClassName(className) : null;
+
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            // --- Sheet 1: Student Import Template ---
-            Sheet dataSheet = workbook.createSheet("Student Import Template");
+            String sheetName = isClassSpecific
+                    ? (targetExcelClass + " Students")
+                    : "Student Import Template";
+            Sheet sheet = workbook.createSheet(sheetName);
 
-            // Header style
-            CellStyle headerStyle = workbook.createCellStyle();
+            // Styling setup
             Font headerFont = workbook.createFont();
             headerFont.setBold(true);
             headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerFont.setFontHeightInPoints((short) 10);
+            headerFont.setFontName("Calibri");
+
+            CellStyle headerStyle = workbook.createCellStyle();
             headerStyle.setFont(headerFont);
             headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
@@ -70,42 +130,47 @@ public class ExcelImportService {
             headerStyle.setBorderLeft(BorderStyle.THIN);
             headerStyle.setBorderRight(BorderStyle.THIN);
 
-            // Data row style
-            CellStyle dataStyle = workbook.createCellStyle();
-            dataStyle.setBorderBottom(BorderStyle.THIN);
-            dataStyle.setBorderTop(BorderStyle.THIN);
-            dataStyle.setBorderLeft(BorderStyle.THIN);
-            dataStyle.setBorderRight(BorderStyle.THIN);
+            Font bodyFont = workbook.createFont();
+            bodyFont.setFontHeightInPoints((short) 10);
+            bodyFont.setFontName("Calibri");
+
+            DataFormat dataFormat = workbook.createDataFormat();
+
+            // Text style (@ format to prevent scientific notation)
+            CellStyle textStyle = workbook.createCellStyle();
+            textStyle.setFont(bodyFont);
+            textStyle.setDataFormat(dataFormat.getFormat("@"));
+            textStyle.setBorderBottom(BorderStyle.THIN);
+            textStyle.setBorderTop(BorderStyle.THIN);
+            textStyle.setBorderLeft(BorderStyle.THIN);
+            textStyle.setBorderRight(BorderStyle.THIN);
+            textStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+            // Center text style (@ format)
+            CellStyle centerTextStyle = workbook.createCellStyle();
+            centerTextStyle.setFont(bodyFont);
+            centerTextStyle.setDataFormat(dataFormat.getFormat("@"));
+            centerTextStyle.setAlignment(HorizontalAlignment.CENTER);
+            centerTextStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+            centerTextStyle.setBorderBottom(BorderStyle.THIN);
+            centerTextStyle.setBorderTop(BorderStyle.THIN);
+            centerTextStyle.setBorderLeft(BorderStyle.THIN);
+            centerTextStyle.setBorderRight(BorderStyle.THIN);
 
             // Date cell style
             CellStyle dateStyle = workbook.createCellStyle();
-            CreationHelper createHelper = workbook.getCreationHelper();
-            dateStyle.setDataFormat(createHelper.createDataFormat().getFormat("yyyy-MM-dd"));
+            dateStyle.setFont(bodyFont);
+            dateStyle.setDataFormat(dataFormat.getFormat("dd-MM-yyyy"));
+            dateStyle.setAlignment(HorizontalAlignment.CENTER);
+            dateStyle.setVerticalAlignment(VerticalAlignment.CENTER);
             dateStyle.setBorderBottom(BorderStyle.THIN);
             dateStyle.setBorderTop(BorderStyle.THIN);
             dateStyle.setBorderLeft(BorderStyle.THIN);
             dateStyle.setBorderRight(BorderStyle.THIN);
 
-            String[] headers = {
-                    "Adm No",
-                    "Name",
-                    "Class",
-                    "Section",
-                    "DOB",
-                    "Gender",
-                    "Father Name",
-                    "Mother Name",
-                    "Guardian Name",
-                    "Mobile",
-                    "Address",
-                    "Blood Group",
-                    "Joining Date",
-                    "Active Student",
-                    "Phone Number",
-                    "Password"
-            };
+            String[] headers = TEMPLATE_HEADERS;
 
-            Row headerRow = dataSheet.createRow(0);
+            Row headerRow = sheet.createRow(0);
             headerRow.setHeightInPoints(26);
             for (int i = 0; i < headers.length; i++) {
                 Cell cell = headerRow.createCell(i);
@@ -113,111 +178,260 @@ public class ExcelImportService {
                 cell.setCellStyle(headerStyle);
             }
 
-            // No sample rows as per requirement
+            int rowIndex = 1;
+            int serialNo = 1;
 
+            if (isClassSpecific) {
+                // Fetch existing students of this specific class
+                List<Student> classStudents = studentRepository.findAll().stream()
+                        .filter(s -> AcademicClassOrder.isClassMatch(s.getClassName(), targetAppClass))
+                        .sorted((s1, s2) -> {
+                            String sec1 = s1.getSection() != null ? s1.getSection() : "";
+                            String sec2 = s2.getSection() != null ? s2.getSection() : "";
+                            int secComp = sec1.compareToIgnoreCase(sec2);
+                            if (secComp != 0) return secComp;
+                            return AcademicClassOrder.compareNatural(s1.getAdmissionNumber(), s2.getAdmissionNumber());
+                        })
+                        .toList();
 
-            // Freeze header row
-            dataSheet.createFreezePane(0, 1);
+                // Populate existing students
+                for (Student s : classStudents) {
+                    Row r = sheet.createRow(rowIndex++);
+                    r.setHeightInPoints(20);
 
-            // Add Data Validations
-            DataValidationHelper validationHelper = dataSheet.getDataValidationHelper();
-            
-            // Gender Dropdown (Col 5)
-            DataValidationConstraint genderConstraint = validationHelper.createExplicitListConstraint(new String[]{"Male", "Female", "Other"});
-            CellRangeAddressList genderRange = new CellRangeAddressList(1, 1048575, 5, 5);
-            DataValidation genderValidation = validationHelper.createValidation(genderConstraint, genderRange);
-            genderValidation.setShowErrorBox(true);
-            dataSheet.addValidationData(genderValidation);
+                    // Col 0: S.No
+                    Cell c0 = r.createCell(0);
+                    c0.setCellValue(serialNo++);
+                    c0.setCellStyle(centerTextStyle);
 
-            // Blood Group Dropdown (Col 11)
-            DataValidationConstraint bgConstraint = validationHelper.createExplicitListConstraint(new String[]{"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"});
-            CellRangeAddressList bgRange = new CellRangeAddressList(1, 1048575, 11, 11);
-            DataValidation bgValidation = validationHelper.createValidation(bgConstraint, bgRange);
-            bgValidation.setShowErrorBox(true);
-            dataSheet.addValidationData(bgValidation);
+                    // Col 1: Adm No
+                    Cell c1 = r.createCell(1);
+                    c1.setCellValue(s.getAdmissionNumber() != null ? s.getAdmissionNumber().trim() : "");
+                    c1.setCellStyle(centerTextStyle);
 
-            // Active Student Dropdown (Col 13)
-            DataValidationConstraint statusConstraint = validationHelper.createExplicitListConstraint(new String[]{"Active", "Inactive"});
-            CellRangeAddressList statusRange = new CellRangeAddressList(1, 1048575, 13, 13);
-            DataValidation statusValidation = validationHelper.createValidation(statusConstraint, statusRange);
-            statusValidation.setShowErrorBox(true);
-            dataSheet.addValidationData(statusValidation);
+                    // Col 2: Name
+                    Cell c2 = r.createCell(2);
+                    c2.setCellValue(s.getName() != null ? s.getName().trim() : "");
+                    c2.setCellStyle(textStyle);
 
-            // Date validation for DOB (Col 4) and Joining Date (Col 12)
-            DataValidationConstraint dateConstraint = validationHelper.createDateConstraint(
-                    DataValidationConstraint.OperatorType.BETWEEN,
-                    "Date(1900, 1, 1)", "Date(2099, 12, 31)", "yyyy-mm-dd"
-            );
-            
-            CellRangeAddressList dobRange = new CellRangeAddressList(1, 1048575, 4, 4);
-            DataValidation dobValidation = validationHelper.createValidation(dateConstraint, dobRange);
-            dobValidation.setShowErrorBox(true);
-            dobValidation.createErrorBox("Invalid Date", "Please enter a valid date in DD-MM-YYYY format.");
-            dobValidation.setShowPromptBox(true);
-            dobValidation.createPromptBox("Date Format", "Enter date in DD-MM-YYYY format.");
-            dataSheet.addValidationData(dobValidation);
+                    // Col 3: Class (Excel format: e.g. "X", "V", "III")
+                    Cell c3 = r.createCell(3);
+                    c3.setCellValue(targetExcelClass);
+                    c3.setCellStyle(centerTextStyle);
 
-            CellRangeAddressList joiningDateRange = new CellRangeAddressList(1, 1048575, 12, 12);
-            DataValidation joiningDateValidation = validationHelper.createValidation(dateConstraint, joiningDateRange);
-            joiningDateValidation.setShowErrorBox(true);
-            joiningDateValidation.createErrorBox("Invalid Date", "Please enter a valid date in DD-MM-YYYY format.");
-            joiningDateValidation.setShowPromptBox(true);
-            joiningDateValidation.createPromptBox("Date Format", "Enter joining date in DD-MM-YYYY format.");
-            dataSheet.addValidationData(joiningDateValidation);
+                    // Col 4: Section
+                    Cell c4 = r.createCell(4);
+                    c4.setCellValue(s.getSection() != null ? s.getSection().trim() : "");
+                    c4.setCellStyle(centerTextStyle);
 
-            // Auto filter
-            dataSheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.length - 1));
+                    // Col 5: DOB
+                    Cell c5 = r.createCell(5);
+                    if (s.getDateOfBirth() != null) {
+                        c5.setCellValue(s.getDateOfBirth().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+                        c5.setCellStyle(centerTextStyle);
+                    } else {
+                        c5.setCellValue("");
+                        c5.setCellStyle(centerTextStyle);
+                    }
 
-            // Auto-size columns with min width
+                    // Col 6: Gender
+                    Cell c6 = r.createCell(6);
+                    c6.setCellValue(s.getGender() != null ? s.getGender().trim() : "");
+                    c6.setCellStyle(centerTextStyle);
+
+                    // Col 7: Father Name
+                    Cell c7 = r.createCell(7);
+                    c7.setCellValue(s.getFatherName() != null ? s.getFatherName().trim() : "");
+                    c7.setCellStyle(textStyle);
+
+                    // Col 8: Mother Name
+                    Cell c8 = r.createCell(8);
+                    c8.setCellValue(s.getMotherName() != null ? s.getMotherName().trim() : "");
+                    c8.setCellStyle(textStyle);
+
+                    // Col 9: Guardian Name
+                    Cell c9 = r.createCell(9);
+                    c9.setCellValue(s.getGuardianName() != null ? s.getGuardianName().trim() : "");
+                    c9.setCellStyle(textStyle);
+
+                    // Col 10: Father Mobile Number
+                    Cell c10 = r.createCell(10);
+                    String fm = s.getFatherMobileNumber();
+                    if ((fm == null || fm.isBlank()) && s.getContactNumber() != null) fm = s.getContactNumber();
+                    c10.setCellValue(fm != null ? fm.trim() : "");
+                    c10.setCellStyle(centerTextStyle);
+
+                    // Col 11: Mother Mobile Number
+                    Cell c11 = r.createCell(11);
+                    c11.setCellValue(s.getMotherMobileNumber() != null ? s.getMotherMobileNumber().trim() : "");
+                    c11.setCellStyle(centerTextStyle);
+
+                    // Col 12: Guardian Mobile Number
+                    Cell c12 = r.createCell(12);
+                    c12.setCellValue(s.getGuardianMobileNumber() != null ? s.getGuardianMobileNumber().trim() : "");
+                    c12.setCellStyle(centerTextStyle);
+
+                    // Col 13: Address
+                    Cell c13 = r.createCell(13);
+                    c13.setCellValue(s.getAddress() != null ? s.getAddress().trim() : "");
+                    c13.setCellStyle(textStyle);
+
+                    // Col 14: Blood Group
+                    Cell c14 = r.createCell(14);
+                    c14.setCellValue(s.getBloodGroup() != null ? s.getBloodGroup().trim() : "");
+                    c14.setCellStyle(centerTextStyle);
+
+                    // Col 15: Joining Date
+                    Cell c15 = r.createCell(15);
+                    if (s.getJoiningDate() != null) {
+                        c15.setCellValue(s.getJoiningDate().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")));
+                        c15.setCellStyle(centerTextStyle);
+                    } else {
+                        c15.setCellValue("");
+                        c15.setCellStyle(centerTextStyle);
+                    }
+                }
+
+                // Add 50 blank rows with S.No continuing and Class pre-filled as targetExcelClass (e.g. "X")
+                for (int i = 0; i < 50; i++) {
+                    Row r = sheet.createRow(rowIndex++);
+                    r.setHeightInPoints(20);
+
+                    Cell c0 = r.createCell(0);
+                    c0.setCellValue(serialNo++);
+                    c0.setCellStyle(centerTextStyle);
+
+                    for (int col = 1; col < headers.length; col++) {
+                        Cell c = r.createCell(col);
+                        if (col == 3) {
+                            c.setCellValue(targetExcelClass);
+                            c.setCellStyle(centerTextStyle);
+                        } else {
+                            c.setCellValue("");
+                            c.setCellStyle((col == 1 || col == 4 || col == 5 || col == 6 || col == 10 || col == 11 || col == 12 || col == 14 || col == 15) ? centerTextStyle : textStyle);
+                        }
+                    }
+                }
+            } else {
+                // Generic / Main template: add 50 clean rows with S.No pre-filled
+                for (int i = 0; i < 50; i++) {
+                    Row r = sheet.createRow(rowIndex++);
+                    r.setHeightInPoints(20);
+
+                    Cell c0 = r.createCell(0);
+                    c0.setCellValue(serialNo++);
+                    c0.setCellStyle(centerTextStyle);
+
+                    for (int col = 1; col < headers.length; col++) {
+                        Cell c = r.createCell(col);
+                        c.setCellValue("");
+                        c.setCellStyle((col == 1 || col == 3 || col == 4 || col == 5 || col == 6 || col == 10 || col == 11 || col == 12 || col == 14 || col == 15) ? centerTextStyle : textStyle);
+                    }
+                }
+            }
+
+            // Set column formatting & width
             for (int i = 0; i < headers.length; i++) {
-                dataSheet.autoSizeColumn(i);
-                int currentWidth = dataSheet.getColumnWidth(i);
-                dataSheet.setColumnWidth(i, Math.max(currentWidth + 1000, 3500));
+                sheet.setDefaultColumnStyle(i, textStyle);
+                sheet.autoSizeColumn(i);
+                int currentWidth = sheet.getColumnWidth(i);
+                sheet.setColumnWidth(i, Math.max(currentWidth + 1200, 4200));
             }
 
-            // --- Sheet 2: Instructions ---
-            Sheet instSheet = workbook.createSheet("Instructions");
+            // Data Validations
+            DataValidationHelper dvHelper = sheet.getDataValidationHelper();
+            int maxValidationRow = Math.max(rowIndex + 200, 1000);
 
-            CellStyle titleStyle = workbook.createCellStyle();
-            Font titleFont = workbook.createFont();
-            titleFont.setBold(true);
-            titleFont.setFontHeightInPoints((short) 14);
-            titleStyle.setFont(titleFont);
+            // 1. Gender dropdown (Col 6)
+            CellRangeAddressList genderRange = new CellRangeAddressList(1, maxValidationRow, 6, 6);
+            DataValidationConstraint genderConstraint = dvHelper.createExplicitListConstraint(new String[]{"Male", "Female", "Other"});
+            DataValidation genderValidation = dvHelper.createValidation(genderConstraint, genderRange);
+            genderValidation.setSuppressDropDownArrow(true);
+            genderValidation.setShowErrorBox(true);
+            genderValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            genderValidation.createErrorBox("Invalid Gender", "Please select a valid gender from the dropdown: Male, Female, Other.");
+            sheet.addValidationData(genderValidation);
 
-            Row titleRow = instSheet.createRow(0);
-            Cell titleCell = titleRow.createCell(0);
-            titleCell.setCellValue("Instructions for Bulk Student Upload (Template Version 1.0)");
-            titleCell.setCellStyle(titleStyle);
+            // 2. Blood Group dropdown (Col 14)
+            CellRangeAddressList bgRange = new CellRangeAddressList(1, maxValidationRow, 14, 14);
+            DataValidationConstraint bgConstraint = dvHelper.createExplicitListConstraint(
+                    new String[]{"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"}
+            );
+            DataValidation bgValidation = dvHelper.createValidation(bgConstraint, bgRange);
+            bgValidation.setSuppressDropDownArrow(true);
+            bgValidation.setShowErrorBox(true);
+            bgValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            bgValidation.createErrorBox("Invalid Blood Group", "Please select a valid blood group (A+, A-, B+, B-, AB+, AB-, O+, O-).");
+            sheet.addValidationData(bgValidation);
 
-            String[] instructions = {
-                    "1. Fill one student record per row starting from row 2 in the 'Student Import Template' sheet.",
-                    "2. S.No is automatically generated by the system. Admin does NOT need to enter S.No.",
-                    "3. Admission Number (Adm No) is a required unique identifier.",
-                    "4. Required Fields: 'Adm No', 'Name', and 'Class' are mandatory for every student.",
-                    "5. At least one of Father Name, Mother Name, or Guardian Name must be provided.",
-                    "6. DOB format: Enter date only (DD-MM-YYYY).",
-                    "7. Mobile Number should contain a valid contact number (7 to 15 digits).",
-                    "8. Joining Date format: Enter date only (DD-MM-YYYY).",
-                    "9. Active Student: Select either 'Active' or 'Inactive'.",
-                    "10. Phone Number: Parent/student portal login phone number.",
-                    "11. Password: Initial portal password. Do not share passwords unnecessarily.",
-                    "12. Duplicate Student Rule: The system will detect and reject duplicate students.",
-                    "13. ATOMIC IMPORT: If any row has a validation error or duplicate, ZERO students will be added."
-            };
-
-            CellStyle instStyle = workbook.createCellStyle();
-            Font instFont = workbook.createFont();
-            instFont.setFontHeightInPoints((short) 11);
-            instStyle.setFont(instFont);
-
-            for (int i = 0; i < instructions.length; i++) {
-                Row row = instSheet.createRow(i + 2);
-                Cell cell = row.createCell(0);
-                cell.setCellValue(instructions[i]);
-                cell.setCellStyle(instStyle);
+            // 3. Class dropdown / lock (Col 3)
+            CellRangeAddressList classRange = new CellRangeAddressList(1, maxValidationRow, 3, 3);
+            DataValidationConstraint classConstraint;
+            if (isClassSpecific) {
+                classConstraint = dvHelper.createExplicitListConstraint(new String[]{targetExcelClass});
+            } else {
+                classConstraint = dvHelper.createExplicitListConstraint(
+                        AcademicClassOrder.EXCEL_CLASSES.toArray(new String[0])
+                );
             }
+            DataValidation classValidation = dvHelper.createValidation(classConstraint, classRange);
+            classValidation.setSuppressDropDownArrow(true);
+            classValidation.setShowErrorBox(true);
+            classValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            if (isClassSpecific) {
+                classValidation.createErrorBox("Class Locked", "This template is locked for " + targetExcelClass + " (" + targetAppClass + "). Changing class is not allowed.");
+            } else {
+                classValidation.createErrorBox("Invalid Class", "Please select a valid class from the dropdown (LKG, UKG, I to XII).");
+            }
+            sheet.addValidationData(classValidation);
 
-            instSheet.setColumnWidth(0, 256 * 120); // Set fixed width to prevent autoSizeColumn from exceeding max width on long instruction strings
+            // 4. DOB Date validation (Col 5)
+            CellRangeAddressList dobRange = new CellRangeAddressList(1, maxValidationRow, 5, 5);
+            DataValidationConstraint dobConstraint = dvHelper.createDateConstraint(
+                    DataValidationConstraint.OperatorType.BETWEEN,
+                    "DATE(1900,1,1)",
+                    "DATE(2099,12,31)",
+                    "yyyy-MM-dd"
+            );
+            DataValidation dobValidation = dvHelper.createValidation(dobConstraint, dobRange);
+            dobValidation.setEmptyCellAllowed(true);
+            dobValidation.setShowErrorBox(true);
+            dobValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            dobValidation.createErrorBox("Invalid Date of Birth", "Please enter a valid date in DD-MM-YYYY format.");
+            sheet.addValidationData(dobValidation);
+
+            // 5. Joining Date Date validation (Col 15)
+            CellRangeAddressList jdRange = new CellRangeAddressList(1, maxValidationRow, 15, 15);
+            DataValidationConstraint jdConstraint = dvHelper.createDateConstraint(
+                    DataValidationConstraint.OperatorType.BETWEEN,
+                    "DATE(1900,1,1)",
+                    "DATE(2099,12,31)",
+                    "yyyy-MM-dd"
+            );
+            DataValidation jdValidation = dvHelper.createValidation(jdConstraint, jdRange);
+            jdValidation.setEmptyCellAllowed(true);
+            jdValidation.setShowErrorBox(true);
+            jdValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            jdValidation.createErrorBox("Invalid Joining Date", "Please enter a valid date in DD-MM-YYYY format.");
+            sheet.addValidationData(jdValidation);
+
+            // 6. Mobile number validation (Cols 10, 11, 12)
+            CellRangeAddressList mobileRange = new CellRangeAddressList(1, maxValidationRow, 10, 12);
+            DataValidationConstraint mobileConstraint = dvHelper.createTextLengthConstraint(
+                    DataValidationConstraint.OperatorType.EQUAL,
+                    "10",
+                    null
+            );
+            DataValidation mobileValidation = dvHelper.createValidation(mobileConstraint, mobileRange);
+            mobileValidation.setEmptyCellAllowed(true);
+            mobileValidation.setShowErrorBox(true);
+            mobileValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
+            mobileValidation.createErrorBox("Invalid Mobile Number", "Mobile number must be a valid 10-digit Indian phone number.");
+            sheet.addValidationData(mobileValidation);
+
+            // Filters and freeze pane
+            sheet.setAutoFilter(new CellRangeAddress(0, Math.max(1, rowIndex - 1), 0, headers.length - 1));
+            sheet.createFreezePane(0, 1);
 
             workbook.write(out);
             return out.toByteArray();
@@ -225,14 +439,32 @@ public class ExcelImportService {
     }
 
     // =========================================================================
-    // 2. BULK UPLOAD WITH ATOMIC VALIDATION & TRANSACTION
+    // 2. TWO-PHASE VALIDATE & COMMIT WORKFLOW
     // =========================================================================
+
+    public BulkUploadResult validateBulkUpload(MultipartFile file) throws IOException {
+        return validateBulkUpload(file, null);
+    }
+
+    public BulkUploadResult validateBulkUpload(MultipartFile file, String expectedClassName) throws IOException {
+        return executeBulkUpload(file, expectedClassName, false);
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public BulkUploadResult processBulkUpload(MultipartFile file) throws IOException {
+        return processBulkUpload(file, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public BulkUploadResult processBulkUpload(MultipartFile file, String expectedClassName) throws IOException {
+        return executeBulkUpload(file, expectedClassName, true);
+    }
+
+    private BulkUploadResult executeBulkUpload(MultipartFile file, String expectedClassName, boolean commitToDatabase) throws IOException {
         if (file.isEmpty()) {
             return BulkUploadResult.builder()
                     .success(false)
+                    .canCommit(false)
                     .message("Uploaded file is empty.")
                     .errorCount(1)
                     .errors(List.of(BulkUploadError.builder()
@@ -247,6 +479,7 @@ public class ExcelImportService {
         if (filename == null || (!filename.toLowerCase().endsWith(".xlsx") && !filename.toLowerCase().endsWith(".xls"))) {
             return BulkUploadResult.builder()
                     .success(false)
+                    .canCommit(false)
                     .message("Invalid file type. Only .xlsx and .xls files are supported.")
                     .errorCount(1)
                     .errors(List.of(BulkUploadError.builder()
@@ -260,14 +493,17 @@ public class ExcelImportService {
         List<BulkUploadError> errors = new ArrayList<>();
         List<ParsedStudentRow> parsedRows = new ArrayList<>();
 
+        Map<String, Student> dbStudentMap = new HashMap<>();
+        for (Student s : studentRepository.findAll()) {
+            if (s.getAdmissionNumber() != null && !s.getAdmissionNumber().isBlank()) {
+                dbStudentMap.put(s.getAdmissionNumber().trim().toLowerCase(), s);
+            }
+        }
+
         try (InputStream is = file.getInputStream();
              Workbook workbook = WorkbookFactory.create(is)) {
 
-            Sheet sheet = workbook.getSheet("Student Import Template");
-            if (sheet == null) {
-                sheet = workbook.getSheetAt(0);
-            }
-
+            Sheet sheet = workbook.getSheetAt(0);
             if (sheet == null || sheet.getLastRowNum() < 1) {
                 errors.add(BulkUploadError.builder()
                         .row(0)
@@ -277,95 +513,94 @@ public class ExcelImportService {
                 return buildFailureResult(errors, Collections.emptyList());
             }
 
-            Row headerRow = sheet.getRow(0);
-            if (headerRow == null) {
-                errors.add(BulkUploadError.builder()
-                        .row(0)
-                        .errorType("Missing Header")
-                        .errorMessage("The worksheet is missing a header row.")
-                        .build());
-                return buildFailureResult(errors, Collections.emptyList());
-            }
+            Map<String, Integer> colMap = new HashMap<>();
 
-            Map<String, Integer> colMap = buildColumnMap(headerRow);
-
-            // Verify required header columns
-            if (!hasColumn(colMap, "adm no", "admission no", "admission number", "admissionno", "register number", "reg no")) {
-                errors.add(BulkUploadError.builder()
-                        .row(1)
-                        .errorType("Missing Column")
-                        .errorMessage("The uploaded Excel file is missing the required column: 'Adm No'.")
-                        .errorFields("Adm No")
-                        .build());
-            }
-            if (!hasColumn(colMap, "name", "student name", "studentname")) {
-                errors.add(BulkUploadError.builder()
-                        .row(1)
-                        .errorType("Missing Column")
-                        .errorMessage("The uploaded Excel file is missing the required column: 'Name'.")
-                        .errorFields("Name")
-                        .build());
-            }
-            if (!hasColumn(colMap, "class", "classname", "class name")) {
-                errors.add(BulkUploadError.builder()
-                        .row(1)
-                        .errorType("Missing Column")
-                        .errorMessage("The uploaded Excel file is missing the required column: 'Class'.")
-                        .errorFields("Class")
-                        .build());
-            }
-
-            if (!errors.isEmpty()) {
-                return buildFailureResult(errors, Collections.emptyList());
+            // Find header row (check first 10 rows)
+            for (int r = 0; r <= Math.min(sheet.getLastRowNum(), 10); r++) {
+                Row testRow = sheet.getRow(r);
+                if (testRow != null && isHeaderRow(testRow)) {
+                    colMap = buildColumnMap(testRow);
+                    break;
+                }
             }
 
             // In-file duplicate tracking
-            Map<String, Integer> seenAdmissionNumbers = new HashMap<>(); // normalizedAdmNo -> rowNum
-            Map<String, Integer> seenStudentFingerprints = new HashMap<>(); // fingerprint -> rowNum
+            Map<String, Integer> seenAdmissionNumbers = new HashMap<>(); // normAdm -> rowNum
 
-            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+            for (int r = 0; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null || isRowEmpty(row)) continue;
 
-                int excelRow = r + 1; // 1-based display row number
+                int excelRow = r + 1; // 1-based display row
 
-                String sNo = getCellString(row, colMap, "s.no", "sno", "serial no", "sl no");
+                // Skip header row
+                if (isHeaderRow(row)) {
+                    colMap = buildColumnMap(row);
+                    continue;
+                }
+
+                if (colMap.isEmpty()) {
+                    colMap = buildColumnMap(row);
+                    if (isHeaderRow(row)) continue;
+                }
+
                 String rawAdmNo = getCellString(row, colMap, "adm no", "admission no", "admission number", "admissionno", "register number", "reg no");
-                String rawName = getCellString(row, colMap, "name", "student name", "studentname");
+                String rawName = getCellString(row, colMap, "student name", "name", "studentname");
                 String rawClass = getCellString(row, colMap, "class", "classname", "class name");
                 String section = getCellString(row, colMap, "section");
                 String gender = getCellString(row, colMap, "gender");
                 String fatherName = getCellString(row, colMap, "father name", "fathername", "father");
                 String motherName = getCellString(row, colMap, "mother name", "mothername", "mother");
                 String guardianName = getCellString(row, colMap, "guardian name", "guardianname", "guardian");
-                String mobile = getCellString(row, colMap, "mobile", "mobile number", "contact number", "contact", "phone", "father mobile number");
-                String address = getCellString(row, colMap, "address", "residential address");
-                String bloodGroup = getCellString(row, colMap, "blood group", "bloodgroup", "blood");
-                String joiningDateRaw = getCellString(row, colMap, "joining date", "joiningdate", "date of joining");
-                String isActiveRaw = getCellString(row, colMap, "active student", "active", "is active", "status");
-                String phoneNumber = getCellString(row, colMap, "phone number", "phone", "portal phone");
-                String password = getCellString(row, colMap, "password", "portal password");
 
-                // Parse Date of Birth
-                LocalDate dob = null;
-                String dobRaw = getCellString(row, colMap, "dob", "date of birth", "dateofbirth", "birth date");
-                if (dobRaw != null && !dobRaw.isBlank()) {
-                    dob = parseDateValue(row, colMap, excelRow, dobRaw, errors, rawName, rawAdmNo, "DOB", "dob", "date of birth", "dateofbirth", "birth date");
+                String fatherMobile = getCellString(row, colMap, "father mobile number", "father mobile", "father phone", "father contact");
+                String motherMobile = getCellString(row, colMap, "mother mobile number", "mother mobile", "mother phone", "mother contact");
+                String guardianMobile = getCellString(row, colMap, "guardian mobile number", "guardian mobile", "guardian phone", "guardian contact");
+                String genericMobile = getCellString(row, colMap, "mobile", "mobile number", "contact number", "contact", "phone");
+
+                if ((fatherMobile == null || fatherMobile.isBlank()) && genericMobile != null && !genericMobile.isBlank()) {
+                    fatherMobile = genericMobile;
                 }
 
-                // Normalization
+                String address = getCellString(row, colMap, "address", "residential address");
+                String bloodGroup = getCellString(row, colMap, "blood group", "bloodgroup", "blood");
+                String dobRaw = getCellString(row, colMap, "dob", "date of birth", "dateofbirth", "birth date");
+                String joiningDateRaw = getCellString(row, colMap, "joining date", "joiningdate", "date of joining");
+                String phoneNumber = getCellString(row, colMap, "parent login phone number", "parent login phone", "parent login mobile", "phone number", "portal phone");
+                String password = getCellString(row, colMap, "parent login password", "password", "portal password");
+
+                // If Adm No matches header or is blank while name is also blank, skip row
+                if (rawAdmNo != null) {
+                    String normAdmCheck = rawAdmNo.trim().toLowerCase();
+                    if (normAdmCheck.equals("adm no") || normAdmCheck.equals("admission no") || normAdmCheck.equals("admission number") || normAdmCheck.equals("s.no")) {
+                        continue;
+                    }
+                }
+
+                // If both Adm No and Name are blank, this is an unfilled blank template row -> skip it!
+                if ((rawAdmNo == null || rawAdmNo.isBlank()) && (rawName == null || rawName.isBlank())) {
+                    continue;
+                }
+
+                // Parse dates strictly
+                LocalDate dob = null;
+                if (dobRaw != null && !dobRaw.isBlank()) {
+                    dob = parseDateStrict(row, colMap, excelRow, dobRaw, errors, rawName, rawAdmNo, "DOB",
+                            "dob", "date of birth", "dateofbirth", "birth date");
+                }
+
+                LocalDate joiningDate = null;
+                if (joiningDateRaw != null && !joiningDateRaw.isBlank()) {
+                    joiningDate = parseDateStrict(row, colMap, excelRow, joiningDateRaw, errors, rawName, rawAdmNo, "Joining Date",
+                            "joining date", "joiningdate", "date of joining");
+                }
+
                 String normAdmNo = normalize(rawAdmNo);
                 String normName = normalize(rawName);
                 String normClass = normalize(rawClass);
-                String normFather = normalize(fatherName);
-                String normMother = normalize(motherName);
-                String normGuardian = normalize(guardianName);
-                String normAddress = normalize(address);
-                String normDob = dob != null ? dob.toString() : (dobRaw != null ? normalize(dobRaw) : "");
 
                 ParsedStudentRow studentRow = new ParsedStudentRow();
                 studentRow.excelRow = excelRow;
-                studentRow.sNo = sNo;
                 studentRow.rawAdmNo = rawAdmNo;
                 studentRow.normAdmNo = normAdmNo;
                 studentRow.rawName = rawName;
@@ -374,48 +609,22 @@ public class ExcelImportService {
                 studentRow.normClass = normClass;
                 studentRow.section = section;
                 studentRow.dob = dob;
-                studentRow.normDob = normDob;
                 studentRow.gender = gender;
                 studentRow.fatherName = fatherName;
-                studentRow.normFather = normFather;
                 studentRow.motherName = motherName;
-                studentRow.normMother = normMother;
                 studentRow.guardianName = guardianName;
-                studentRow.normGuardian = normGuardian;
-                studentRow.mobile = mobile;
+                studentRow.fatherMobile = fatherMobile;
+                studentRow.motherMobile = motherMobile;
+                studentRow.guardianMobile = guardianMobile;
                 studentRow.address = address;
-                studentRow.normAddress = normAddress;
                 studentRow.bloodGroup = bloodGroup;
+                studentRow.joiningDate = joiningDate;
                 studentRow.phoneNumber = phoneNumber;
                 studentRow.password = password;
 
-                if (joiningDateRaw != null && !joiningDateRaw.isBlank()) {
-                    studentRow.joiningDate = parseDateValue(row, colMap, excelRow, joiningDateRaw, errors, rawName, rawAdmNo, "Joining Date", "joining date", "joiningdate", "date of joining");
-                }
-                
-                if (isActiveRaw != null && !isActiveRaw.isBlank()) {
-                    if (isActiveRaw.equalsIgnoreCase("Active")) {
-                        studentRow.isActive = true;
-                    } else if (isActiveRaw.equalsIgnoreCase("Inactive")) {
-                        studentRow.isActive = false;
-                    } else {
-                        studentRow.isActive = true;
-                        errors.add(BulkUploadError.builder()
-                                .row(excelRow)
-                                .studentName(rawName)
-                                .admissionNumber(rawAdmNo)
-                                .errorType("Invalid Student Status")
-                                .errorMessage("Active Student must be either \"Active\" or \"Inactive\".")
-                                .errorFields("Active Student")
-                                .build());
-                    }
-                } else {
-                    studentRow.isActive = true;
-                }
-
                 parsedRows.add(studentRow);
 
-                // --- 1. Required Field Validations ---
+                // --- Required Field Validations ---
                 if (normAdmNo.isEmpty()) {
                     errors.add(BulkUploadError.builder()
                             .row(excelRow)
@@ -423,7 +632,6 @@ public class ExcelImportService {
                             .admissionNumber(rawAdmNo)
                             .errorType("Missing Required Field")
                             .errorMessage("Row " + excelRow + ": Admission Number is required.")
-                            .errorFields("Adm No")
                             .build());
                 }
 
@@ -434,7 +642,6 @@ public class ExcelImportService {
                             .admissionNumber(rawAdmNo)
                             .errorType("Missing Required Field")
                             .errorMessage("Row " + excelRow + ": Student Name is required.")
-                            .errorFields("Name")
                             .build());
                 }
 
@@ -445,37 +652,57 @@ public class ExcelImportService {
                             .admissionNumber(rawAdmNo)
                             .errorType("Missing Required Field")
                             .errorMessage("Row " + excelRow + ": Class is required.")
-                            .errorFields("Class")
+                            .build());
+                } else if (!AcademicClassOrder.isValidClass(normClass)) {
+                    errors.add(BulkUploadError.builder()
+                            .row(excelRow)
+                            .studentName(rawName)
+                            .admissionNumber(rawAdmNo)
+                            .errorType("Invalid Class")
+                            .errorMessage("Row " + excelRow + ": Invalid class: " + rawClass)
                             .build());
                 }
 
-                if (normFather.isEmpty() && normMother.isEmpty() && normGuardian.isEmpty()) {
+                // Check class-specific template scope if expectedClassName is specified
+                if (expectedClassName != null && !expectedClassName.isBlank() && !"ALL".equalsIgnoreCase(expectedClassName.trim()) && !"ALL CLASSES".equalsIgnoreCase(expectedClassName.trim())) {
+                    if (!AcademicClassOrder.isClassMatch(expectedClassName, normClass)) {
+                        String appExpected = AcademicClassOrder.toApplicationClassName(expectedClassName);
+                        String errMsg;
+                        if (rawName != null && !rawName.isBlank()) {
+                            errMsg = String.format("Student %s belongs to %s. This upload is for %s.", rawName, rawClass, appExpected);
+                        } else {
+                            errMsg = String.format("Invalid class %s. This upload is for %s.", rawClass, appExpected);
+                        }
+                        errors.add(BulkUploadError.builder()
+                                .row(excelRow)
+                                .studentName(rawName)
+                                .admissionNumber(rawAdmNo)
+                                .className(appExpected)
+                                .errorType("Class Mismatch")
+                                .errorMessage(errMsg)
+                                .build());
+                    }
+                }
+
+                // Parent details (required for new students; existing students retain their data)
+                boolean isExistingStudent = !normAdmNo.isEmpty() && dbStudentMap.containsKey(normAdmNo.toLowerCase());
+                if (!isExistingStudent && normalize(fatherName).isEmpty() && normalize(motherName).isEmpty() && normalize(guardianName).isEmpty()) {
                     errors.add(BulkUploadError.builder()
                             .row(excelRow)
                             .studentName(rawName)
                             .admissionNumber(rawAdmNo)
                             .errorType("Missing Parent/Guardian")
-                            .errorMessage("At least one of Father Name, Mother Name, or Guardian Name is required.")
-                            .errorFields("Father Name, Mother Name, Guardian Name")
+                            .errorMessage("Row " + excelRow + ": At least one of Father Name, Mother Name, or Guardian Name is required.")
                             .build());
                 }
 
-                // Mobile validation (if present)
-                if (mobile != null && !mobile.isBlank()) {
-                    String cleanMobile = mobile.replaceAll("[\\s\\-+()]", "");
-                    if (!cleanMobile.matches("\\d{7,15}")) {
-                        errors.add(BulkUploadError.builder()
-                                .row(excelRow)
-                                .studentName(rawName)
-                                .admissionNumber(rawAdmNo)
-                                .errorType("Invalid Mobile Number")
-                                .errorMessage("Row " + excelRow + ": Mobile number '" + mobile + "' is invalid (must be 7 to 15 digits).")
-                                .errorFields("Mobile")
-                                .build());
-                    }
-                }
+                // Mobile validation
+                validatePhoneNumberField(fatherMobile, "Father Mobile Number", excelRow, rawName, rawAdmNo, errors);
+                validatePhoneNumberField(motherMobile, "Mother Mobile Number", excelRow, rawName, rawAdmNo, errors);
+                validatePhoneNumberField(guardianMobile, "Guardian Mobile Number", excelRow, rawName, rawAdmNo, errors);
+                validatePhoneNumberField(phoneNumber, "Parent Login Phone Number", excelRow, rawName, rawAdmNo, errors);
 
-                // --- 2. In-File Duplicate Admission Number Validation ---
+                // In-file duplicate admission number
                 if (!normAdmNo.isEmpty()) {
                     String admKey = normAdmNo.toUpperCase();
                     if (seenAdmissionNumbers.containsKey(admKey)) {
@@ -485,37 +712,11 @@ public class ExcelImportService {
                                 .studentName(rawName)
                                 .admissionNumber(rawAdmNo)
                                 .errorType("Duplicate Admission No")
-                                .errorMessage("Row " + excelRow + " has Admission Number \"" + rawAdmNo + "\", which is already used in Row " + prevRow + " of this uploaded file.")
+                                .errorMessage("Duplicate Admission Number " + rawAdmNo + " found in the uploaded Excel.")
                                 .duplicateWithRow(prevRow)
-                                .errorFields("Adm No")
                                 .build());
                     } else {
                         seenAdmissionNumbers.put(admKey, excelRow);
-                    }
-                }
-
-                // --- 3. In-File Duplicate Student Detection (Name + Father + Mother + Guardian + Address + DOB) ---
-                if (!normName.isEmpty() && (!normFather.isEmpty() || !normMother.isEmpty() || !normGuardian.isEmpty() || !normAddress.isEmpty() || !normDob.isEmpty())) {
-                    String fingerprint = normName.toUpperCase() + "|"
-                            + normFather.toUpperCase() + "|"
-                            + normMother.toUpperCase() + "|"
-                            + normGuardian.toUpperCase() + "|"
-                            + normAddress.toUpperCase() + "|"
-                            + normDob.toUpperCase();
-
-                    if (seenStudentFingerprints.containsKey(fingerprint)) {
-                        int prevRow = seenStudentFingerprints.get(fingerprint);
-                        errors.add(BulkUploadError.builder()
-                                .row(excelRow)
-                                .studentName(rawName)
-                                .admissionNumber(rawAdmNo)
-                                .errorType("Duplicate Student")
-                                .errorMessage("Row " + excelRow + " appears to be a duplicate of Row " + prevRow + ". Matching fields: Name, Father/Parent Name, Address, DOB.")
-                                .duplicateWithRow(prevRow)
-                                .errorFields("Name, Father Name, Address, DOB")
-                                .build());
-                    } else {
-                        seenStudentFingerprints.put(fingerprint, excelRow);
                     }
                 }
             }
@@ -529,117 +730,187 @@ public class ExcelImportService {
                 return buildFailureResult(errors, Collections.emptyList());
             }
 
-            // --- 4. Database Duplicate Validations ---
-            // Collect all unique non-empty admission numbers
-            Set<String> allAdmNos = new HashSet<>();
-            for (ParsedStudentRow pr : parsedRows) {
-                if (pr.rawAdmNo != null && !pr.rawAdmNo.isBlank()) {
-                    allAdmNos.add(pr.rawAdmNo.trim());
-                }
-            }
-
-            if (!allAdmNos.isEmpty()) {
-                List<Student> dbMatches = studentRepository.findByAdmissionNumberIn(allAdmNos);
-                Set<String> dbAdmSet = new HashSet<>();
-                for (Student s : dbMatches) {
-                    if (s.getAdmissionNumber() != null) {
-                        dbAdmSet.add(s.getAdmissionNumber().trim().toUpperCase());
-                    }
-                }
-
-                for (ParsedStudentRow pr : parsedRows) {
-                    if (pr.rawAdmNo != null && dbAdmSet.contains(pr.rawAdmNo.trim().toUpperCase())) {
-                        errors.add(BulkUploadError.builder()
-                                .row(pr.excelRow)
-                                .studentName(pr.rawName)
-                                .admissionNumber(pr.rawAdmNo)
-                                .errorType("Database Duplicate")
-                                .errorMessage("Admission Number \"" + pr.rawAdmNo + "\" already exists in the system.")
-                                .errorFields("Adm No")
-                                .build());
-                    }
-                }
-            }
-
-            // Also check candidate duplicate students against existing DB students
+            // Cross-student identity duplication check (different Adm No, but same student)
             List<Student> allDbStudents = studentRepository.findAll();
-            Map<String, Student> dbFingerprintMap = new HashMap<>();
-            for (Student s : allDbStudents) {
-                String dbName = normalize(s.getName()).toUpperCase();
-                String dbFather = normalize(s.getFatherName()).toUpperCase();
-                String dbMother = normalize(s.getMotherName()).toUpperCase();
-                String dbGuardian = normalize(s.getGuardianName()).toUpperCase();
-                String dbAddress = normalize(s.getAddress()).toUpperCase();
-                String dbDob = s.getDateOfBirth() != null ? s.getDateOfBirth().toString().toUpperCase() : "";
-
-                if (!dbName.isEmpty() && (!dbFather.isEmpty() || !dbMother.isEmpty() || !dbGuardian.isEmpty() || !dbAddress.isEmpty() || !dbDob.isEmpty())) {
-                    String fp = dbName + "|" + dbFather + "|" + dbMother + "|" + dbGuardian + "|" + dbAddress + "|" + dbDob;
-                    dbFingerprintMap.put(fp, s);
-                }
-            }
-
             for (ParsedStudentRow pr : parsedRows) {
-                if (!pr.normName.isEmpty() && (!pr.normFather.isEmpty() || !pr.normMother.isEmpty() || !pr.normGuardian.isEmpty() || !pr.normAddress.isEmpty() || !pr.normDob.isEmpty())) {
-                    String fp = pr.normName.toUpperCase() + "|"
-                            + pr.normFather.toUpperCase() + "|"
-                            + pr.normMother.toUpperCase() + "|"
-                            + pr.normGuardian.toUpperCase() + "|"
-                            + pr.normAddress.toUpperCase() + "|"
-                            + pr.normDob.toUpperCase();
+                if (pr.normName.isEmpty()) continue;
 
-                    if (dbFingerprintMap.containsKey(fp)) {
-                        Student matched = dbFingerprintMap.get(fp);
+                for (Student s : allDbStudents) {
+                    if (s.getAdmissionNumber() != null && s.getAdmissionNumber().equalsIgnoreCase(pr.rawAdmNo.trim())) {
+                        continue; // Same admission number -> will be handled as update/unchanged
+                    }
+
+                    // Check if name matches
+                    boolean nameMatches = normalize(s.getName()).equalsIgnoreCase(pr.normName);
+                    boolean dobMatches = (s.getDateOfBirth() != null && pr.dob != null && s.getDateOfBirth().equals(pr.dob));
+                    
+                    boolean parentMatches = false;
+                    if (s.getFatherName() != null && pr.fatherName != null && !pr.fatherName.isBlank() && normalize(s.getFatherName()).equalsIgnoreCase(normalize(pr.fatherName))) {
+                        parentMatches = true;
+                    }
+                    if (s.getMotherName() != null && pr.motherName != null && !pr.motherName.isBlank() && normalize(s.getMotherName()).equalsIgnoreCase(normalize(pr.motherName))) {
+                        parentMatches = true;
+                    }
+                    if (s.getGuardianName() != null && pr.guardianName != null && !pr.guardianName.isBlank() && normalize(s.getGuardianName()).equalsIgnoreCase(normalize(pr.guardianName))) {
+                        parentMatches = true;
+                    }
+
+                    if (nameMatches && dobMatches && parentMatches) {
                         errors.add(BulkUploadError.builder()
                                 .row(pr.excelRow)
                                 .studentName(pr.rawName)
                                 .admissionNumber(pr.rawAdmNo)
-                                .errorType("Database Duplicate Student")
-                                .errorMessage("Student details match an existing student in the database (Adm No: " + matched.getAdmissionNumber() + ") based on Name, Father/Mother/Guardian Name, Address, and DOB.")
-                                .errorFields("Name, Father Name, Mother Name, Guardian Name, Address, DOB")
+                                .errorType("Duplicate Student Identity")
+                                .errorMessage("Possible duplicate student detected. Similar student already exists with Admission No " + s.getAdmissionNumber() + ".")
                                 .build());
+                        break;
                     }
                 }
             }
 
-            // --- 5. ATOMIC DECISION ---
+            // If any error exists, fail atomically
             if (!errors.isEmpty()) {
-                // ANY error found: Rollback / Insert NOTHING, return error Excel
                 return buildFailureResult(errors, parsedRows);
             }
 
+            // Determine ADDED, UPDATED, UNCHANGED for each row
             BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
             List<Student> studentsToSave = new ArrayList<>();
+            List<BulkUploadRowDetail> rowDetails = new ArrayList<>();
+            int insertedCount = 0;
+            int updatedCount = 0;
+            int unchangedCount = 0;
+
             for (ParsedStudentRow pr : parsedRows) {
-                Student s = Student.builder()
-                        .admissionNumber(pr.rawAdmNo.trim())
-                        .name(pr.rawName.trim())
-                        .className(pr.rawClass.trim())
-                        .section(pr.section != null ? pr.section.trim() : null)
-                        .dateOfBirth(pr.dob)
-                        .gender(pr.gender != null ? pr.gender.trim() : null)
-                        .fatherName(pr.fatherName != null ? pr.fatherName.trim() : null)
-                        .motherName(pr.motherName != null ? pr.motherName.trim() : null)
-                        .guardianName(pr.guardianName != null ? pr.guardianName.trim() : null)
-                        .contactNumber(pr.mobile != null ? pr.mobile.trim() : null)
-                        .address(pr.address != null ? pr.address.trim() : null)
-                        .bloodGroup(pr.bloodGroup != null ? pr.bloodGroup.trim() : null)
-                        .joiningDate(pr.joiningDate)
-                        .isActive(pr.isActive != null ? pr.isActive : true)
-                        .phoneNumber(pr.phoneNumber != null ? pr.phoneNumber.trim() : null)
-                        .passwordHash((pr.password != null && !pr.password.isBlank()) ? passwordEncoder.encode(pr.password.trim()) : null)
-                        .build();
-                studentsToSave.add(s);
+                String admKey = pr.rawAdmNo.trim().toLowerCase();
+                Student existing = dbStudentMap.get(admKey);
+
+                String bestContact = pr.fatherMobile != null && !pr.fatherMobile.isBlank() ? pr.fatherMobile.trim()
+                        : (pr.motherMobile != null && !pr.motherMobile.isBlank() ? pr.motherMobile.trim()
+                        : (pr.guardianMobile != null && !pr.guardianMobile.isBlank() ? pr.guardianMobile.trim() : null));
+
+                if (existing != null) {
+                    // Check if anything changed
+                    boolean changed = false;
+                    if (!normalize(existing.getName()).equalsIgnoreCase(pr.normName)) changed = true;
+                    if (pr.rawClass != null && !AcademicClassOrder.isClassMatch(existing.getClassName(), pr.normClass)) changed = true;
+                    if (pr.section != null && !normalize(existing.getSection()).equalsIgnoreCase(normalize(pr.section))) changed = true;
+                    if (pr.dob != null && !Objects.equals(existing.getDateOfBirth(), pr.dob)) changed = true;
+                    if (pr.gender != null && !normalize(existing.getGender()).equalsIgnoreCase(normalize(pr.gender))) changed = true;
+                    if (pr.fatherName != null && !normalize(existing.getFatherName()).equalsIgnoreCase(normalize(pr.fatherName))) changed = true;
+                    if (pr.motherName != null && !normalize(existing.getMotherName()).equalsIgnoreCase(normalize(pr.motherName))) changed = true;
+                    if (pr.guardianName != null && !normalize(existing.getGuardianName()).equalsIgnoreCase(normalize(pr.guardianName))) changed = true;
+                    if (pr.fatherMobile != null && !normalize(existing.getFatherMobileNumber()).equalsIgnoreCase(normalize(pr.fatherMobile))) changed = true;
+                    if (pr.motherMobile != null && !normalize(existing.getMotherMobileNumber()).equalsIgnoreCase(normalize(pr.motherMobile))) changed = true;
+                    if (pr.guardianMobile != null && !normalize(existing.getGuardianMobileNumber()).equalsIgnoreCase(normalize(pr.guardianMobile))) changed = true;
+                    if (pr.address != null && !normalize(existing.getAddress()).equalsIgnoreCase(normalize(pr.address))) changed = true;
+                    if (pr.bloodGroup != null && !normalize(existing.getBloodGroup()).equalsIgnoreCase(normalize(pr.bloodGroup))) changed = true;
+                    if (pr.joiningDate != null && !Objects.equals(existing.getJoiningDate(), pr.joiningDate)) changed = true;
+                    if (pr.phoneNumber != null && !pr.phoneNumber.isBlank() && !normalize(existing.getPhoneNumber()).equalsIgnoreCase(normalize(pr.phoneNumber))) changed = true;
+                    if (pr.password != null && !pr.password.isBlank()) changed = true;
+
+                    if (changed) {
+                        existing.setName(pr.rawName.trim());
+                        if (pr.rawClass != null && !pr.rawClass.isBlank()) existing.setClassName(AcademicClassOrder.toApplicationClassName(pr.normClass));
+                        if (pr.section != null) existing.setSection(pr.section.trim());
+                        if (pr.dob != null) existing.setDateOfBirth(pr.dob);
+                        if (pr.gender != null) existing.setGender(pr.gender.trim());
+                        if (pr.fatherName != null) existing.setFatherName(pr.fatherName.trim());
+                        if (pr.motherName != null) existing.setMotherName(pr.motherName.trim());
+                        if (pr.guardianName != null) existing.setGuardianName(pr.guardianName.trim());
+                        if (pr.fatherMobile != null) existing.setFatherMobileNumber(pr.fatherMobile.trim());
+                        if (pr.motherMobile != null) existing.setMotherMobileNumber(pr.motherMobile.trim());
+                        if (pr.guardianMobile != null) existing.setGuardianMobileNumber(pr.guardianMobile.trim());
+                        if (bestContact != null) existing.setContactNumber(bestContact);
+                        if (pr.address != null) existing.setAddress(pr.address.trim());
+                        if (pr.bloodGroup != null) existing.setBloodGroup(pr.bloodGroup.trim());
+                        if (pr.joiningDate != null) existing.setJoiningDate(pr.joiningDate);
+                        if (pr.phoneNumber != null && !pr.phoneNumber.isBlank()) existing.setPhoneNumber(pr.phoneNumber.trim());
+                        if (pr.password != null && !pr.password.isBlank()) existing.setPasswordHash(passwordEncoder.encode(pr.password.trim()));
+
+                        studentsToSave.add(existing);
+                        updatedCount++;
+                        rowDetails.add(BulkUploadRowDetail.builder()
+                                .rowNumber(pr.excelRow)
+                                .admissionNumber(pr.rawAdmNo.trim())
+                                .studentName(pr.rawName.trim())
+                                .className(existing.getClassName())
+                                .action("UPDATED")
+                                .detail(String.format("Student %s - %s updated successfully.", pr.rawAdmNo.trim(), pr.rawName.trim()))
+                                .build());
+                    } else {
+                        unchangedCount++;
+                        rowDetails.add(BulkUploadRowDetail.builder()
+                                .rowNumber(pr.excelRow)
+                                .admissionNumber(pr.rawAdmNo.trim())
+                                .studentName(pr.rawName.trim())
+                                .className(existing.getClassName())
+                                .action("UNCHANGED")
+                                .detail("Student already exists. No changes detected.")
+                                .build());
+                    }
+                } else {
+                    // New student
+                    String appClass = AcademicClassOrder.toApplicationClassName(pr.normClass);
+                    Student s = Student.builder()
+                            .admissionNumber(pr.rawAdmNo.trim())
+                            .name(pr.rawName.trim())
+                            .className(appClass)
+                            .section(pr.section != null ? pr.section.trim() : null)
+                            .dateOfBirth(pr.dob)
+                            .gender(pr.gender != null ? pr.gender.trim() : null)
+                            .fatherName(pr.fatherName != null ? pr.fatherName.trim() : null)
+                            .motherName(pr.motherName != null ? pr.motherName.trim() : null)
+                            .guardianName(pr.guardianName != null ? pr.guardianName.trim() : null)
+                            .fatherMobileNumber(pr.fatherMobile != null ? pr.fatherMobile.trim() : null)
+                            .motherMobileNumber(pr.motherMobile != null ? pr.motherMobile.trim() : null)
+                            .guardianMobileNumber(pr.guardianMobile != null ? pr.guardianMobile.trim() : null)
+                            .contactNumber(bestContact)
+                            .address(pr.address != null ? pr.address.trim() : null)
+                            .bloodGroup(pr.bloodGroup != null ? pr.bloodGroup.trim() : null)
+                            .joiningDate(pr.joiningDate)
+                            .isActive(true)
+                            .phoneNumber(pr.phoneNumber != null ? pr.phoneNumber.trim() : null)
+                            .passwordHash((pr.password != null && !pr.password.isBlank()) ? passwordEncoder.encode(pr.password.trim()) : null)
+                            .build();
+
+                    studentsToSave.add(s);
+                    insertedCount++;
+                    rowDetails.add(BulkUploadRowDetail.builder()
+                            .rowNumber(pr.excelRow)
+                            .admissionNumber(pr.rawAdmNo.trim())
+                            .studentName(pr.rawName.trim())
+                            .className(appClass)
+                            .action("ADDED")
+                            .detail(String.format("Student %s - %s added successfully.", pr.rawAdmNo.trim(), pr.rawName.trim()))
+                            .build());
+                }
             }
 
-            studentRepository.saveAll(studentsToSave);
-            log.info("Bulk student upload successful: {} students inserted.", studentsToSave.size());
+            if (commitToDatabase && !studentsToSave.isEmpty()) {
+                studentRepository.saveAll(studentsToSave);
+                log.info("Bulk student upload committed: {} added, {} updated, {} unchanged.",
+                        insertedCount, updatedCount, unchangedCount);
+            }
+
+            String summaryMessage;
+            if (insertedCount == 0 && updatedCount == 0 && unchangedCount > 0) {
+                summaryMessage = "No new students found. All students in this file already exist.";
+            } else {
+                summaryMessage = String.format("Bulk Upload Completed: %d added, %d updated, %d already up to date.",
+                        insertedCount, updatedCount, unchangedCount);
+            }
 
             return BulkUploadResult.builder()
                     .success(true)
+                    .canCommit(true)
                     .totalRows(parsedRows.size())
-                    .insertedCount(studentsToSave.size())
+                    .insertedCount(insertedCount)
+                    .updatedCount(updatedCount)
+                    .unchangedCount(unchangedCount)
                     .errorCount(0)
-                    .message(studentsToSave.size() + " students were added successfully.")
+                    .message(summaryMessage)
+                    .rowDetails(rowDetails)
                     .build();
 
         } catch (Exception e) {
@@ -653,244 +924,147 @@ public class ExcelImportService {
         }
     }
 
-    // =========================================================================
-    // 3. ERROR WORKBOOK GENERATION
-    // =========================================================================
+    private void validatePhoneNumberField(String value, String fieldName, int excelRow, String name, String admNo, List<BulkUploadError> errors) {
+        if (value != null && !value.isBlank()) {
+            String clean = value.replaceAll("[\\s\\-+()]", "");
+            if (!clean.matches("^\\d{10}$")) {
+                errors.add(BulkUploadError.builder()
+                        .row(excelRow)
+                        .studentName(name)
+                        .admissionNumber(admNo)
+                        .errorType("Invalid " + fieldName)
+                        .errorMessage("Row " + excelRow + ": " + fieldName + " '" + value + "' is invalid (must be a valid 10-digit Indian mobile number).")
+                        .build());
+            }
+        }
+    }
+
+    private LocalDate parseDateStrict(Row row, Map<String, Integer> colMap, int rowNum, String raw,
+                                      List<BulkUploadError> errors, String studentName, String admNo,
+                                      String fieldName, String... possibleKeys) {
+        for (String key : possibleKeys) {
+            String norm = key.toLowerCase().replaceAll("[._\\-\\s]+", " ");
+            Integer idx = colMap.get(norm);
+            if (idx != null) {
+                Cell cell = row.getCell(idx);
+                if (cell != null && cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+                    try {
+                        java.util.Date d = cell.getDateCellValue();
+                        if (d != null) {
+                            return d.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+                        }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        String trimmed = raw.trim();
+        for (DateTimeFormatter fmt : STRICT_FORMATTERS) {
+            try {
+                return LocalDate.parse(trimmed, fmt);
+            } catch (DateTimeParseException ignored) {}
+        }
+
+        errors.add(BulkUploadError.builder()
+                .row(rowNum)
+                .studentName(studentName)
+                .admissionNumber(admNo)
+                .errorType("Invalid " + fieldName)
+                .errorMessage("Row " + rowNum + ": Invalid " + fieldName + ": " + raw)
+                .build());
+        return null;
+    }
+
+    private BulkUploadResult buildFailureResult(List<BulkUploadError> errors, List<ParsedStudentRow> parsedRows) {
+        String errorExcelBase64 = null;
+        try {
+            byte[] errBytes = generateErrorReport(errors, parsedRows);
+            errorExcelBase64 = Base64.getEncoder().encodeToString(errBytes);
+        } catch (Exception e) {
+            log.warn("Could not generate error excel report", e);
+        }
+
+        return BulkUploadResult.builder()
+                .success(false)
+                .canCommit(false)
+                .totalRows(parsedRows.size())
+                .insertedCount(0)
+                .updatedCount(0)
+                .unchangedCount(0)
+                .errorCount(errors.size())
+                .message("Bulk Upload Failed: " + errors.size() + " issue(s) detected. No changes saved.")
+                .errors(errors)
+                .errorExcelBase64(errorExcelBase64)
+                .build();
+    }
 
     public byte[] generateErrorReport(List<BulkUploadError> errors, List<ParsedStudentRow> rows) throws IOException {
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            // --- Sheet 1: Upload Errors ---
-            Sheet errorSheet = workbook.createSheet("Upload Errors");
+            Sheet errSheet = workbook.createSheet("Upload Errors");
 
-            // Header Style
-            CellStyle headerStyle = workbook.createCellStyle();
-            Font headerFont = workbook.createFont();
-            headerFont.setBold(true);
-            headerFont.setColor(IndexedColors.WHITE.getIndex());
-            headerStyle.setFont(headerFont);
-            headerStyle.setFillForegroundColor(IndexedColors.DARK_RED.getIndex());
-            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-            headerStyle.setAlignment(HorizontalAlignment.CENTER);
-            headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
-            headerStyle.setBorderBottom(BorderStyle.THIN);
-            headerStyle.setBorderTop(BorderStyle.THIN);
-            headerStyle.setBorderLeft(BorderStyle.THIN);
-            headerStyle.setBorderRight(BorderStyle.THIN);
+            CellStyle errHeaderStyle = workbook.createCellStyle();
+            Font errHeaderFont = workbook.createFont();
+            errHeaderFont.setBold(true);
+            errHeaderFont.setColor(IndexedColors.WHITE.getIndex());
+            errHeaderStyle.setFont(errHeaderFont);
+            errHeaderStyle.setFillForegroundColor(IndexedColors.RED.getIndex());
+            errHeaderStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            errHeaderStyle.setAlignment(HorizontalAlignment.CENTER);
+            errHeaderStyle.setVerticalAlignment(VerticalAlignment.CENTER);
 
-            // Row styles
             CellStyle cellStyle = workbook.createCellStyle();
-            cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
             cellStyle.setBorderBottom(BorderStyle.THIN);
             cellStyle.setBorderTop(BorderStyle.THIN);
             cellStyle.setBorderLeft(BorderStyle.THIN);
             cellStyle.setBorderRight(BorderStyle.THIN);
 
-            CellStyle wrapStyle = workbook.createCellStyle();
-            wrapStyle.cloneStyleFrom(cellStyle);
-            wrapStyle.setWrapText(true);
-
-            String[] headers = {
-                    "Excel Row",
-                    "Student Name",
-                    "Admission No",
-                    "Error Type",
-                    "Error Message",
-                    "Duplicate With Row",
-                    "Error Fields"
-            };
-
-            Row headerRow = errorSheet.createRow(0);
-            headerRow.setHeightInPoints(26);
-            for (int i = 0; i < headers.length; i++) {
-                Cell cell = headerRow.createCell(i);
-                cell.setCellValue(headers[i]);
-                cell.setCellStyle(headerStyle);
+            String[] errHeaders = {"Row #", "Adm No", "Student Name", "Error Type", "Error Description"};
+            Row hRow = errSheet.createRow(0);
+            hRow.setHeightInPoints(24);
+            for (int i = 0; i < errHeaders.length; i++) {
+                Cell c = hRow.createCell(i);
+                c.setCellValue(errHeaders[i]);
+                c.setCellStyle(errHeaderStyle);
             }
 
-            // Fill rows
-            int rNum = 1;
+            int rIdx = 1;
             for (BulkUploadError err : errors) {
-                Row row = errorSheet.createRow(rNum++);
-                row.setHeightInPoints(24);
+                Row r = errSheet.createRow(rIdx++);
+                r.setHeightInPoints(20);
 
-                Cell c0 = row.createCell(0);
-                c0.setCellValue(err.getRow() > 0 ? String.valueOf(err.getRow()) : "General");
+                Cell c0 = r.createCell(0);
+                if (err.getRow() > 0) c0.setCellValue(err.getRow());
+                else c0.setCellValue("File");
                 c0.setCellStyle(cellStyle);
 
-                Cell c1 = row.createCell(1);
-                c1.setCellValue(err.getStudentName() != null ? err.getStudentName() : "—");
+                Cell c1 = r.createCell(1);
+                c1.setCellValue(err.getAdmissionNumber() != null ? err.getAdmissionNumber() : "");
                 c1.setCellStyle(cellStyle);
 
-                Cell c2 = row.createCell(2);
-                c2.setCellValue(err.getAdmissionNumber() != null ? err.getAdmissionNumber() : "—");
+                Cell c2 = r.createCell(2);
+                c2.setCellValue(err.getStudentName() != null ? err.getStudentName() : "");
                 c2.setCellStyle(cellStyle);
 
-                Cell c3 = row.createCell(3);
-                c3.setCellValue(err.getErrorType() != null ? err.getErrorType() : "Error");
+                Cell c3 = r.createCell(3);
+                c3.setCellValue(err.getErrorType() != null ? err.getErrorType() : "Validation Error");
                 c3.setCellStyle(cellStyle);
 
-                Cell c4 = row.createCell(4);
+                Cell c4 = r.createCell(4);
                 c4.setCellValue(err.getErrorMessage() != null ? err.getErrorMessage() : "");
-                c4.setCellStyle(wrapStyle);
-
-                Cell c5 = row.createCell(5);
-                c5.setCellValue(err.getDuplicateWithRow() != null ? "Row " + err.getDuplicateWithRow() : "—");
-                c5.setCellStyle(cellStyle);
-
-                Cell c6 = row.createCell(6);
-                c6.setCellValue(err.getErrorFields() != null ? err.getErrorFields() : "—");
-                c6.setCellStyle(cellStyle);
+                c4.setCellStyle(cellStyle);
             }
 
-            // Freeze header and enable filter
-            errorSheet.createFreezePane(0, 1);
-            errorSheet.setAutoFilter(new CellRangeAddress(0, 0, 0, headers.length - 1));
-
-            // Auto-size columns
-            for (int i = 0; i < headers.length; i++) {
-                errorSheet.autoSizeColumn(i);
-                int cur = errorSheet.getColumnWidth(i);
-                errorSheet.setColumnWidth(i, Math.max(cur + 1200, 4000));
+            for (int i = 0; i < errHeaders.length; i++) {
+                errSheet.autoSizeColumn(i);
+                errSheet.setColumnWidth(i, Math.max(errSheet.getColumnWidth(i) + 1024, 3800));
             }
-            errorSheet.setColumnWidth(4, 15000); // Give Error Message generous width
-
-            // --- Sheet 2: Instructions ---
-            Sheet instSheet = workbook.createSheet("Instructions");
-
-            CellStyle titleStyle = workbook.createCellStyle();
-            Font titleFont = workbook.createFont();
-            titleFont.setBold(true);
-            titleFont.setFontHeightInPoints((short) 13);
-            titleStyle.setFont(titleFont);
-
-            Row instTitle = instSheet.createRow(0);
-            Cell tCell = instTitle.createCell(0);
-            tCell.setCellValue("How to Resolve Bulk Student Upload Errors");
-            tCell.setCellStyle(titleStyle);
-
-            String[] notes = {
-                    "IMPORTANT: Because errors were detected, NO STUDENTS WERE IMPORTED (atomic transaction).",
-                    "",
-                    "1. Review the 'Upload Errors' sheet to see the specific row numbers and descriptions of each issue.",
-                    "2. 'Duplicate Admission No': Change the admission number so that each student has a unique identifier.",
-                    "3. 'Duplicate Student': Review records where Name, Father Name, Address, and DOB match another student.",
-                    "4. 'Database Duplicate': The student's admission number is already assigned to an enrolled student in the database.",
-                    "5. 'Missing Required Field': Ensure 'Adm No', 'Name', and 'Class' are populated.",
-                    "6. 'Invalid Date of Birth': Verify dates use YYYY-MM-DD or DD/MM/YYYY.",
-                    "",
-                    "After correcting the data in your Excel file, save it and submit it again via 'Bulk Upload Students'."
-            };
-
-            CellStyle noteStyle = workbook.createCellStyle();
-            Font noteFont = workbook.createFont();
-            noteFont.setFontHeightInPoints((short) 11);
-            noteStyle.setFont(noteFont);
-
-            for (int i = 0; i < notes.length; i++) {
-                Row row = instSheet.createRow(i + 2);
-                Cell cell = row.createCell(0);
-                cell.setCellValue(notes[i]);
-                cell.setCellStyle(noteStyle);
-            }
-
-            instSheet.autoSizeColumn(0);
 
             workbook.write(out);
             return out.toByteArray();
         }
     }
-
-    private BulkUploadResult buildFailureResult(List<BulkUploadError> errors, List<ParsedStudentRow> parsedRows) {
-        List<BulkUploadError> sortedErrors = new ArrayList<>(errors);
-        sortedErrors.sort(ERROR_COMPARATOR);
-
-        String base64Excel = "";
-        try {
-            byte[] errorBytes = generateErrorReport(sortedErrors, parsedRows);
-            base64Excel = Base64.getEncoder().encodeToString(errorBytes);
-        } catch (Exception e) {
-            log.warn("Failed to generate error Excel report: {}", e.getMessage());
-        }
-
-        return BulkUploadResult.builder()
-                .success(false)
-                .totalRows(parsedRows.size())
-                .insertedCount(0)
-                .errorCount(sortedErrors.size())
-                .errors(sortedErrors)
-                .errorExcelBase64(base64Excel)
-                .message(sortedErrors.size() + " error(s) found. No students were added.")
-                .build();
-    }
-
-    public static final Comparator<BulkUploadError> ERROR_COMPARATOR = (e1, e2) -> {
-        String a1 = e1.getAdmissionNumber();
-        String a2 = e2.getAdmissionNumber();
-
-        int admComp = compareNatural(a1, a2);
-        if (admComp != 0) {
-            return admComp;
-        }
-        return Integer.compare(e1.getRow(), e2.getRow());
-    };
-
-    public static int compareNatural(String s1, String s2) {
-        if (s1 == null && s2 == null) return 0;
-        if (s1 == null || s1.isBlank()) return 1;
-        if (s2 == null || s2.isBlank()) return -1;
-
-        s1 = s1.trim();
-        s2 = s2.trim();
-
-        // Check if both are pure numbers
-        try {
-            long l1 = Long.parseLong(s1);
-            long l2 = Long.parseLong(s2);
-            return Long.compare(l1, l2);
-        } catch (NumberFormatException ignored) {}
-
-        // Natural sort by splitting into text and numeric segments
-        int i1 = 0, i2 = 0;
-        int len1 = s1.length(), len2 = s2.length();
-
-        while (i1 < len1 && i2 < len2) {
-            char c1 = s1.charAt(i1);
-            char c2 = s2.charAt(i2);
-
-            if (Character.isDigit(c1) && Character.isDigit(c2)) {
-                int start1 = i1;
-                while (i1 < len1 && Character.isDigit(s1.charAt(i1))) i1++;
-                String numStr1 = s1.substring(start1, i1);
-
-                int start2 = i2;
-                while (i2 < len2 && Character.isDigit(s2.charAt(i2))) i2++;
-                String numStr2 = s2.substring(start2, i2);
-
-                try {
-                    long n1 = Long.parseLong(numStr1);
-                    long n2 = Long.parseLong(numStr2);
-                    int numDiff = Long.compare(n1, n2);
-                    if (numDiff != 0) return numDiff;
-                } catch (NumberFormatException e) {
-                    int strDiff = numStr1.compareTo(numStr2);
-                    if (strDiff != 0) return strDiff;
-                }
-            } else {
-                int charDiff = Character.compare(Character.toLowerCase(c1), Character.toLowerCase(c2));
-                if (charDiff != 0) return charDiff;
-                i1++;
-                i2++;
-            }
-        }
-
-        return Integer.compare(len1, len2);
-    }
-
-    // =========================================================================
-    // 4. EXISTING IMPORT METHOD (Kept for backwards compatibility)
-    // =========================================================================
 
     public ImportResult importStudents(MultipartFile file) throws IOException {
         BulkUploadResult bulkResult = processBulkUpload(file);
@@ -908,10 +1082,6 @@ public class ExcelImportService {
         return legacy;
     }
 
-    // =========================================================================
-    // 5. HELPER METHODS
-    // =========================================================================
-
     private String normalize(String str) {
         if (str == null) return "";
         return str.trim().replaceAll("\\s+", " ");
@@ -919,6 +1089,7 @@ public class ExcelImportService {
 
     private Map<String, Integer> buildColumnMap(Row header) {
         Map<String, Integer> map = new HashMap<>();
+        if (header == null) return map;
         for (int c = 0; c < header.getLastCellNum(); c++) {
             Cell cell = header.getCell(c);
             if (cell != null) {
@@ -929,10 +1100,16 @@ public class ExcelImportService {
         return map;
     }
 
-    private boolean hasColumn(Map<String, Integer> colMap, String... possibleKeys) {
-        for (String key : possibleKeys) {
-            String norm = key.toLowerCase().replaceAll("[._\\-\\s]+", " ");
-            if (colMap.containsKey(norm)) return true;
+    private boolean isHeaderRow(Row row) {
+        if (row == null) return false;
+        for (int c = row.getFirstCellNum(); c < row.getLastCellNum(); c++) {
+            Cell cell = row.getCell(c);
+            if (cell != null) {
+                String val = cell.toString().trim().toLowerCase();
+                if (val.equals("adm no") || val.equals("admission no") || val.equals("admission number") || val.equals("register number") || val.equals("student name")) {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -944,12 +1121,17 @@ public class ExcelImportService {
             if (idx != null) {
                 Cell cell = row.getCell(idx);
                 if (cell != null) {
-                    if (cell.getCellType() == CellType.NUMERIC && !DateUtil.isCellDateFormatted(cell)) {
-                        double num = cell.getNumericCellValue();
-                        if (num == (long) num) {
-                            return String.valueOf((long) num);
+                    if (cell.getCellType() == CellType.NUMERIC) {
+                        if (DateUtil.isCellDateFormatted(cell)) {
+                            LocalDate ld = cell.getLocalDateTimeCellValue().toLocalDate();
+                            return ld.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
                         } else {
-                            return String.valueOf(num);
+                            double num = cell.getNumericCellValue();
+                            if (num == (long) num) {
+                                return String.valueOf((long) num);
+                            } else {
+                                return String.valueOf(num);
+                            }
                         }
                     }
                     String val = cell.toString().trim();
@@ -957,39 +1139,6 @@ public class ExcelImportService {
                 }
             }
         }
-        return null;
-    }
-
-    private LocalDate parseDateValue(Row row, Map<String, Integer> colMap, int rowNum, String raw,
-                                    List<BulkUploadError> errors, String studentName, String admNo, String fieldName, String... possibleKeys) {
-        // Handle numeric date cell from Excel
-        for (String key : possibleKeys) {
-            String norm = key.toLowerCase().replaceAll("[._\\-\\s]+", " ");
-            Integer idx = colMap.get(norm);
-            if (idx != null) {
-                Cell cell = row.getCell(idx);
-                if (cell != null && cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
-                    try {
-                        return cell.getLocalDateTimeCellValue().toLocalDate();
-                    } catch (Exception ignored) {}
-                }
-            }
-        }
-
-        for (DateTimeFormatter fmt : DATE_FORMATS) {
-            try {
-                return LocalDate.parse(raw.trim(), fmt);
-            } catch (DateTimeParseException ignored) {}
-        }
-
-        errors.add(BulkUploadError.builder()
-                .row(rowNum)
-                .studentName(studentName)
-                .admissionNumber(admNo)
-                .errorType("Invalid Date")
-                .errorMessage(fieldName + " must be a valid date in DD-MM-YYYY format.")
-                .errorFields(fieldName)
-                .build());
         return null;
     }
 
@@ -1007,7 +1156,6 @@ public class ExcelImportService {
     @lombok.NoArgsConstructor
     public static class ParsedStudentRow {
         public int excelRow;
-        public String sNo;
         public String rawAdmNo;
         public String normAdmNo;
         public String rawName;
@@ -1016,20 +1164,16 @@ public class ExcelImportService {
         public String normClass;
         public String section;
         public LocalDate dob;
-        public String normDob;
         public String gender;
         public String fatherName;
-        public String normFather;
         public String motherName;
-        public String normMother;
         public String guardianName;
-        public String normGuardian;
-        public String mobile;
+        public String fatherMobile;
+        public String motherMobile;
+        public String guardianMobile;
         public String address;
-        public String normAddress;
         public String bloodGroup;
         public LocalDate joiningDate;
-        public Boolean isActive;
         public String phoneNumber;
         public String password;
     }

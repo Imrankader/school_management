@@ -1,114 +1,344 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { studentService } from '../../services/studentService';
-import { authService } from '../../services/authService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { BulkUploadModal } from '../../components/students/BulkUploadModal';
+import { getClassAcademicRank, compareAcademicClasses } from '../../utils/academicClassOrder';
 import {
-  Users,
   Plus,
   Search,
   Edit2,
   Trash2,
-  UserCheck,
-  Mail,
-  Phone,
-  MapPin,
-  Calendar,
   Upload,
-  AlertTriangle
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  ChevronRight,
+  Layers,
+  RotateCcw,
+  Users
 } from 'lucide-react';
 
 export const StudentsPage = () => {
-  const [students, setStudents] = useState([]);
-  const [counts, setCounts] = useState({ totalStudents: 0, activeStudents: 0, presentStudents: 0, absentStudents: 0 });
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
+  // Navigation View: 'summary' (Class Student Summary) | 'class-details' (Selected Class Records)
+  const [view, setView] = useState('summary');
+  const [selectedClass, setSelectedClass] = useState('');
 
-  // Modal State
+  // Class Summary State
+  const [classSummaries, setClassSummaries] = useState([]);
+  const [loadingSummaries, setLoadingSummaries] = useState(false);
+
+  // Master Search State (Search across all students by Name, Roll No, Admission No, Phone Number)
+  const [masterSearch, setMasterSearch] = useState('');
+  const [masterStudents, setMasterStudents] = useState([]);
+  const [loadingMasterSearch, setLoadingMasterSearch] = useState(false);
+  const [masterPagination, setMasterPagination] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
+
+  // Class-Specific Students State
+  const [students, setStudents] = useState([]);
+  const [classStudentCount, setClassStudentCount] = useState(0);
+  const [classSearch, setClassSearch] = useState('');
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+
+  // Overall Stats
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [activeStudentsCount, setActiveStudentsCount] = useState(0);
+
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [statusModal, setStatusModal] = useState({ isOpen: false, student: null, loading: false });
+  const [bulkModalTargetClass, setBulkModalTargetClass] = useState(null);
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, student: null, loading: false });
   const [editingStudent, setEditingStudent] = useState(null);
+  const [showModalPassword, setShowModalPassword] = useState(false);
+
   const [formData, setFormData] = useState({
     admNo: '',
     name: '',
-    className: 'Class 10',
-    section: 'A',
-    dob: '2010-01-01',
+    className: '',
+    section: '',
+    dob: '',
     gender: 'Male',
     fatherName: '',
+    fatherMobileNumber: '',
     motherName: '',
+    motherMobileNumber: '',
     guardianName: '',
-    mobile: '',
+    guardianMobileNumber: '',
     address: '',
-    bloodGroup: 'O+',
+    bloodGroup: '',
+    joiningDate: '',
+    phoneNumber: '',
+    password: ''
   });
 
   const { addToast } = useToast();
 
   useEffect(() => {
-    loadStudents(1);
-  }, [search, statusFilter]);
+    loadClassSummaries();
+  }, []);
 
-  const loadParents = async () => {
-    try {
-      const res = await authService.getParents();
-      if (res.success && res.data) {
-        setParents(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to load parents list', err);
+  // When classSearch or pagination changes in class-details view, reload class students
+  useEffect(() => {
+    if (view === 'class-details' && selectedClass) {
+      const timer = setTimeout(() => {
+        loadStudentsForClass(selectedClass, classSearch, 1);
+      }, 250);
+      return () => clearTimeout(timer);
     }
-  };
+  }, [classSearch, selectedClass, view]);
 
-  const loadStudents = async (page = 1) => {
+  // Multi-field search across: Student Name, Admission/Roll Number, Father/Mother/Guardian Mobile
+  // Strictly restricted to selectedClass
+  const filteredStudents = useMemo(() => {
+    if (!classSearch || !classSearch.trim()) return students;
+    const q = classSearch.trim().toLowerCase();
+    const rawDigits = q.replace(/\D/g, '');
+
+    return students.filter((s) => {
+      // Scoped strictly to the currently selected class
+      if (s.className && selectedClass && s.className.trim().toLowerCase() !== selectedClass.trim().toLowerCase()) {
+        return false;
+      }
+      const name = (s.name || '').toLowerCase();
+      const adm = (s.admissionNumber || '').toLowerCase();
+      const roll = (s.rollNumber || '').toLowerCase();
+      const fatherMob = (s.fatherMobileNumber || '').toLowerCase();
+      const motherMob = (s.motherMobileNumber || '').toLowerCase();
+      const guardianMob = (s.guardianMobileNumber || '').toLowerCase();
+      const contact = (s.contactNumber || '').toLowerCase();
+      const phone = (s.phoneNumber || '').toLowerCase();
+
+      const textMatch = name.includes(q) || adm.includes(q) || roll.includes(q);
+      const phoneMatch =
+        fatherMob.includes(q) ||
+        motherMob.includes(q) ||
+        guardianMob.includes(q) ||
+        contact.includes(q) ||
+        phone.includes(q) ||
+        (rawDigits.length >= 3 && (
+          fatherMob.replace(/\D/g, '').includes(rawDigits) ||
+          motherMob.replace(/\D/g, '').includes(rawDigits) ||
+          guardianMob.replace(/\D/g, '').includes(rawDigits) ||
+          contact.replace(/\D/g, '').includes(rawDigits) ||
+          phone.replace(/\D/g, '').includes(rawDigits)
+        ));
+
+      return textMatch || phoneMatch;
+    });
+  }, [students, classSearch, selectedClass]);
+
+  // Master Search effect: Debounced search across all students in school
+  useEffect(() => {
+    if (view === 'summary') {
+      if (!masterSearch || !masterSearch.trim()) {
+        setMasterStudents([]);
+        setLoadingMasterSearch(false);
+        return;
+      }
+      const timer = setTimeout(() => {
+        handleMasterSearch(masterSearch, 1);
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [masterSearch, view]);
+
+  const handleMasterSearch = async (query, page = 1) => {
+    if (!query || !query.trim()) {
+      setMasterStudents([]);
+      setLoadingMasterSearch(false);
+      return;
+    }
     try {
-      setLoading(true);
-      const res = await studentService.getAllStudents({ search, status: statusFilter, page, pageSize: pagination.pageSize || 20 });
-      if (res.success && res.data) {
-        setStudents(res.data.data);
-        setPagination(res.data.pagination);
-        setCounts({
-          totalStudents: res.data.totalStudents,
-          activeStudents: res.data.activeStudents,
-          inactiveStudents: res.data.inactiveStudents || (res.data.totalStudents - res.data.activeStudents)
-        });
+      setLoadingMasterSearch(true);
+      const res = await studentService.getAllStudents({
+        search: query.trim(),
+        page,
+        pageSize: 50,
+      });
+
+      if (res && res.success && res.data) {
+        setMasterStudents(res.data.data || []);
+        const pag = res.data.pagination || { page: 1, pageSize: 50, total: 0, totalPages: 0 };
+        setMasterPagination(pag);
+      } else if (res && res.data) {
+        const list = Array.isArray(res.data) ? res.data : (res.data.data || []);
+        setMasterStudents(list);
+        setMasterPagination({ page: 1, pageSize: 50, total: list.length, totalPages: 1 });
       }
     } catch (err) {
-      addToast('Failed to load students', 'error');
+      console.error('Master search failed:', err);
+      addToast('Failed to perform master search', 'error');
     } finally {
-      setLoading(false);
+      setLoadingMasterSearch(false);
     }
   };
 
-  const handleOpenAdd = () => {
+  // Instant client-side multi-field filter on master search results
+  const filteredMasterStudents = useMemo(() => {
+    if (!masterSearch || !masterSearch.trim()) return [];
+    const q = masterSearch.trim().toLowerCase();
+    const rawDigits = q.replace(/\D/g, '');
+
+    return masterStudents.filter((s) => {
+      const name = (s.name || '').toLowerCase();
+      const adm = (s.admissionNumber || '').toLowerCase();
+      const roll = (s.rollNumber || '').toLowerCase();
+      const cName = (s.className || '').toLowerCase();
+      const fatherMob = (s.fatherMobileNumber || '').toLowerCase();
+      const motherMob = (s.motherMobileNumber || '').toLowerCase();
+      const guardianMob = (s.guardianMobileNumber || '').toLowerCase();
+      const contact = (s.contactNumber || '').toLowerCase();
+      const phone = (s.phoneNumber || '').toLowerCase();
+
+      const textMatch = name.includes(q) || adm.includes(q) || roll.includes(q) || cName.includes(q);
+      const phoneMatch =
+        fatherMob.includes(q) ||
+        motherMob.includes(q) ||
+        guardianMob.includes(q) ||
+        contact.includes(q) ||
+        phone.includes(q) ||
+        (rawDigits.length >= 3 && (
+          fatherMob.replace(/\D/g, '').includes(rawDigits) ||
+          motherMob.replace(/\D/g, '').includes(rawDigits) ||
+          guardianMob.replace(/\D/g, '').includes(rawDigits) ||
+          contact.replace(/\D/g, '').includes(rawDigits) ||
+          phone.replace(/\D/g, '').includes(rawDigits)
+        ));
+
+      return textMatch || phoneMatch;
+    });
+  }, [masterStudents, masterSearch]);
+
+  const matchingClasses = useMemo(() => {
+    if (!masterSearch || !masterSearch.trim()) return [];
+    const q = masterSearch.trim().toLowerCase();
+    return classSummaries.filter((c) => (c.className || '').toLowerCase().includes(q));
+  }, [classSummaries, masterSearch]);
+
+  // Load summary of classes with student counts
+  const loadClassSummaries = async () => {
+    try {
+      setLoadingSummaries(true);
+      const res = await studentService.getClassSummary();
+      let summaryData = [];
+      if (res && res.success && Array.isArray(res.data)) {
+        summaryData = res.data;
+      } else if (Array.isArray(res)) {
+        summaryData = res;
+      } else if (res && res.data && Array.isArray(res.data.data)) {
+        summaryData = res.data.data;
+      }
+
+      // Sort classes strictly in ascending academic order using centralized utility
+      const sorted = [...summaryData].sort(compareAcademicClasses);
+      setClassSummaries(sorted);
+
+      // Compute total students from summary
+      const total = sorted.reduce((sum, item) => sum + (Number(item.studentCount) || 0), 0);
+      setTotalStudents(total);
+      setActiveStudentsCount(total);
+    } catch (err) {
+      console.error('Failed to load class summary:', err);
+      addToast('Failed to load class student summaries', 'error');
+    } finally {
+      setLoadingSummaries(false);
+    }
+  };
+
+  // Load students for a selected class with optional search and pagination
+  const loadStudentsForClass = async (className, searchParam = '', page = 1) => {
+    try {
+      setLoadingStudents(true);
+      const res = await studentService.getAllStudents({
+        className: className,
+        search: searchParam,
+        page,
+        pageSize: pagination.pageSize || 20,
+      });
+
+      if (res && res.success && res.data) {
+        setStudents(res.data.data || []);
+        const pag = res.data.pagination || { page: 1, pageSize: 20, total: 0, totalPages: 0 };
+        setPagination(pag);
+        setClassStudentCount(pag.total ?? (res.data.data || []).length);
+      } else if (res && res.data) {
+        const studentList = Array.isArray(res.data) ? res.data : (res.data.data || []);
+        setStudents(studentList);
+        setClassStudentCount(studentList.length);
+      }
+    } catch (err) {
+      console.error('Failed to load class students:', err);
+      addToast(`Failed to load students for ${className}`, 'error');
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  // Open class-details view
+  const handleOpenClassDetails = (className) => {
+    setSelectedClass(className);
+    setClassSearch('');
+    setView('class-details');
+    loadStudentsForClass(className, '', 1);
+  };
+
+  // Return to Class Student Summary view
+  const handleBackToSummary = () => {
+    setView('summary');
+    setSelectedClass('');
+    setClassSearch('');
+    loadClassSummaries();
+  };
+
+  // Open Bulk Upload Modal
+  const handleOpenBulkUpload = (targetClass = null) => {
+    setBulkModalTargetClass(targetClass);
+    setIsBulkModalOpen(true);
+  };
+
+  // Filtered class summary list for Classes Overview
+  const filteredClassSummaries = useMemo(() => {
+    return classSummaries
+      .filter((item) => {
+        const count = Number(item.studentCount) || 0;
+        return count > 0;
+      })
+      .sort(compareAcademicClasses);
+  }, [classSummaries]);
+
+  // Open Add Student Modal (From Summary: class empty; From Class-Details: class locked/prefilled)
+  const handleOpenAdd = (prefillClass = '') => {
     setEditingStudent(null);
+    setShowModalPassword(false);
     setFormData({
       admNo: '',
       name: '',
-      className: '',
+      className: prefillClass || '',
       section: '',
       dob: '',
       gender: '',
       fatherName: '',
+      fatherMobileNumber: '',
       motherName: '',
+      motherMobileNumber: '',
       guardianName: '',
-      mobile: '',
+      guardianMobileNumber: '',
       address: '',
       bloodGroup: '',
       joiningDate: '',
-      isActive: true,
       phoneNumber: '',
       password: ''
     });
     setIsModalOpen(true);
   };
 
+  // Open Edit Student Modal
   const handleOpenEdit = (student) => {
     setEditingStudent(student);
+    setShowModalPassword(false);
     setFormData({
       admNo: student.admissionNumber || '',
       name: student.name || '',
@@ -117,38 +347,43 @@ export const StudentsPage = () => {
       dob: student.dateOfBirth || '',
       gender: student.gender || '',
       fatherName: student.fatherName || '',
+      fatherMobileNumber: student.fatherMobileNumber || student.contactNumber || '',
       motherName: student.motherName || '',
+      motherMobileNumber: student.motherMobileNumber || '',
       guardianName: student.guardianName || '',
-      mobile: student.contactNumber || '',
+      guardianMobileNumber: student.guardianMobileNumber || '',
       address: student.address || '',
       bloodGroup: student.bloodGroup || '',
       joiningDate: student.joiningDate || '',
-      isActive: student.isActive !== undefined ? student.isActive : true,
       phoneNumber: student.phoneNumber || '',
       password: ''
     });
     setIsModalOpen(true);
   };
 
-  const openStatusModal = (student) => {
-    setStatusModal({ isOpen: true, student, loading: false });
+  const openDeleteModal = (student) => {
+    setDeleteModal({ isOpen: true, student, loading: false });
   };
 
-  const confirmToggleStatus = async () => {
-    const { student } = statusModal;
+  const confirmDelete = async () => {
+    const { student } = deleteModal;
     if (!student) return;
-    
-    const isActivating = student.isActive === false;
-    
-    setStatusModal(prev => ({ ...prev, loading: true }));
+
+    setDeleteModal((prev) => ({ ...prev, loading: true }));
     try {
-      await studentService.updateStudentStatus(student.id, isActivating ? 'ACTIVE' : 'INACTIVE');
-      addToast(`Student ${isActivating ? 'reactivated' : 'deactivated'} successfully`, 'success');
-      loadStudents(pagination.page);
-      setStatusModal({ isOpen: false, student: null, loading: false });
+      await studentService.deleteStudent(student.id);
+      addToast('Student deleted successfully', 'success');
+      setDeleteModal({ isOpen: false, student: null, loading: false });
+      if (view === 'class-details' && selectedClass) {
+        loadStudentsForClass(selectedClass, classSearch, pagination.page);
+      }
+      if (masterSearch) {
+        handleMasterSearch(masterSearch, masterPagination.page);
+      }
+      loadClassSummaries();
     } catch (err) {
-      addToast(`Failed to ${isActivating ? 'reactivate' : 'deactivate'} student. Please try again.`, 'error');
-      setStatusModal(prev => ({ ...prev, loading: false }));
+      addToast(err.response?.data?.message || 'Failed to delete student. Please try again.', 'error');
+      setDeleteModal((prev) => ({ ...prev, loading: false }));
     }
   };
 
@@ -162,22 +397,25 @@ export const StudentsPage = () => {
 
     try {
       const payload = {
-        admissionNumber: formData.admNo,
+        admissionNumber: formData.admNo.trim(),
         name: formData.name.trim(),
-        className: formData.className,
-        section: formData.section,
-        dateOfBirth: formData.dob,
+        className: formData.className.trim(),
+        section: formData.section ? formData.section.trim() : '',
+        dateOfBirth: formData.dob || null,
         gender: formData.gender,
-        fatherName: formData.fatherName,
-        motherName: formData.motherName,
-        guardianName: formData.guardianName,
-        contactNumber: formData.mobile,
-        address: formData.address,
-        bloodGroup: formData.bloodGroup,
-        joiningDate: formData.joiningDate,
-        isActive: formData.isActive,
-        phoneNumber: formData.phoneNumber,
-        password: formData.password,
+        fatherName: formData.fatherName ? formData.fatherName.trim() : '',
+        fatherMobileNumber: formData.fatherMobileNumber ? formData.fatherMobileNumber.trim() : '',
+        motherName: formData.motherName ? formData.motherName.trim() : '',
+        motherMobileNumber: formData.motherMobileNumber ? formData.motherMobileNumber.trim() : '',
+        guardianName: formData.guardianName ? formData.guardianName.trim() : '',
+        guardianMobileNumber: formData.guardianMobileNumber ? formData.guardianMobileNumber.trim() : '',
+        contactNumber: formData.fatherMobileNumber || formData.motherMobileNumber || formData.guardianMobileNumber || '',
+        address: formData.address ? formData.address.trim() : '',
+        bloodGroup: formData.bloodGroup || '',
+        joiningDate: formData.joiningDate || null,
+        isActive: true,
+        phoneNumber: formData.phoneNumber ? formData.phoneNumber.trim() : '',
+        password: formData.password ? formData.password.trim() : '',
         parentId: null
       };
 
@@ -189,216 +427,1058 @@ export const StudentsPage = () => {
         addToast('Student added successfully!', 'success');
       }
       setIsModalOpen(false);
-      loadStudents(pagination.page);
+
+      if (view === 'class-details' && selectedClass) {
+        loadStudentsForClass(selectedClass, classSearch, pagination.page);
+      }
+      if (masterSearch) {
+        handleMasterSearch(masterSearch, masterPagination.page);
+      }
+      loadClassSummaries();
     } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to add student', 'error');
+      addToast(err.response?.data?.message || 'Failed to save student', 'error');
     }
   };
 
-  const getParentLabel = (parentId) => {
-    if (!parentId) return 'Unassigned';
-    const found = parents.find((p) => p.id === parentId);
-    return found ? `${found.name} (ID #${found.id})` : `Parent ID #${parentId}`;
-  };
-
   return (
-    <div>
-      <div className="page-header">
+    <div className="page-container" style={{ padding: '1.5rem 2rem', maxWidth: '1440px', margin: '0 auto' }}>
+      {/* ========================================================================= */}
+      {/* 1. MAIN STUDENT DIRECTORY — CLASS SUMMARY VIEW */}
+      {/* ========================================================================= */}
+      {view === 'summary' && (
         <div>
-          <h1 className="page-title">Student Directory</h1>
-          <p className="page-subtitle">Manage student records, attendance, profiles, and parent information.</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button
-            onClick={() => setIsBulkModalOpen(true)}
-            className="btn btn-secondary"
+          {/* Header */}
+          <div
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontWeight: 600,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              flexWrap: 'wrap',
+              gap: '1rem',
+              marginBottom: '1.5rem',
+              paddingBottom: '1.25rem',
+              borderBottom: '1px solid var(--border-subtle)',
             }}
           >
-            <Upload size={18} /> Bulk Upload Students
-          </button>
-          <button onClick={handleOpenAdd} className="btn btn-primary">
-            <Plus size={18} /> Add Student
-          </button>
-        </div>
-      </div>
-
-      {/* Count Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderLeft: '4px solid var(--primary, #4f46e5)' }}>
-          <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary, #4f46e5)' }}>{counts.totalStudents}</div>
-          <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 600 }}>Total Students</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>All records</p>
-        </div>
-        <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderLeft: '4px solid var(--success, #10b981)' }}>
-          <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--success, #10b981)' }}>{counts.activeStudents}</div>
-          <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 600 }}>Active Students</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Currently active</p>
-        </div>
-        <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', borderLeft: '4px solid var(--danger, #ef4444)' }}>
-          <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--danger, #ef4444)' }}>{counts.inactiveStudents}</div>
-          <h3 style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 600 }}>Inactive Students</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Currently inactive</p>
-        </div>
-      </div>
-
-      {/* Search Bar & Filter */}
-      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Search by student name, admission no, or class..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ paddingLeft: '2.4rem', borderRadius: '2rem', height: '42px' }}
-          />
-          <Search
-            size={18}
-            style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
-          />
-        </div>
-        <div style={{ width: '200px' }}>
-          <select 
-            className="form-input" 
-            value={statusFilter} 
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ borderRadius: '2rem', height: '42px' }}
-          >
-            <option value="All">All Statuses</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Students Table */}
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Adm No</th>
-              <th>Name</th>
-              <th>Class & Section</th>
-              <th>Mobile</th>
-              <th>Parents</th>
-              <th>Address</th>
-              <th style={{ textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {students.length === 0 ? (
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
-                  {loading ? 'Fetching student records...' : 'No students matching your search criteria.'}
-                </td>
-              </tr>
-            ) : (
-              students.map((s) => (
-                <tr key={s.id}>
-                  <td><strong>{s.admissionNumber}</strong></td>
-                  <td>
-                    <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {s.name}
-                      {s.isActive === false && <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#991b1b', fontSize: '0.7rem' }}>Inactive</span>}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>DOB: {s.dateOfBirth} {s.gender ? `| ${s.gender}` : ''}</div>
-                  </td>
-                  <td>
-                    <span className="badge badge-primary">{s.className} - {s.section}</span>
-                  </td>
-                  <td>{s.contactNumber || '—'}</td>
-                  <td>
-                    <div style={{ fontSize: '0.85rem' }}>
-                      {s.fatherName && <div>F: {s.fatherName}</div>}
-                      {s.motherName && <div>M: {s.motherName}</div>}
-                      {s.guardianName && <div>G: {s.guardianName}</div>}
-                    </div>
-                  </td>
-                  <td style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.address || '—'}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                      <button
-                        onClick={() => handleOpenEdit(s)}
-                        className="btn btn-secondary btn-sm"
-                        title="Edit profile"
-                      >
-                        <Edit2 size={15} />
-                      </button>
-                      <button
-                        onClick={() => openStatusModal(s)}
-                        className={`btn btn-sm ${s.isActive !== false ? 'btn-danger' : 'btn-success'}`}
-                        title={s.isActive !== false ? 'Deactivate student' : 'Reactivate student'}
-                      >
-                        {s.isActive !== false ? <Trash2 size={15} /> : <UserCheck size={15} />}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      
-      {/* Pagination Controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Showing {(pagination.page - 1) * pagination.pageSize + 1}–{Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} students
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            className="btn btn-secondary btn-sm"
-            disabled={pagination.page <= 1}
-            onClick={() => loadStudents(pagination.page - 1)}
-          >
-            Previous
-          </button>
-          
-          {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-            let pageNum = pagination.page;
-            if (pagination.totalPages <= 5) {
-              pageNum = i + 1;
-            } else if (pagination.page <= 3) {
-              pageNum = i + 1;
-            } else if (pagination.page >= pagination.totalPages - 2) {
-              pageNum = pagination.totalPages - 4 + i;
-            } else {
-              pageNum = pagination.page - 2 + i;
-            }
-            
-            return (
-              <button
-                key={pageNum}
-                className={`btn btn-sm ${pageNum === pagination.page ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => loadStudents(pageNum)}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  color: 'var(--text-muted)',
+                  fontSize: '0.8rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  fontWeight: 600,
+                  marginBottom: '0.25rem',
+                }}
               >
-                {pageNum}
+                <span>Students</span>
+                <span>/</span>
+                <span style={{ color: 'var(--primary)' }}>Student Directory</span>
+              </div>
+              <h1
+                style={{
+                  fontSize: '1.65rem',
+                  fontWeight: 700,
+                  margin: 0,
+                  color: 'var(--text-main)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                Student Directory
+              </h1>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
+                Manage student records, directory profiles, and admissions by class.
+              </p>
+            </div>
+
+            {/* Quick Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
+                onClick={loadClassSummaries}
+                disabled={loadingSummaries}
+                title="Reload class summaries"
+              >
+                <RotateCcw size={15} className={loadingSummaries ? 'animate-spin' : ''} />
+                Refresh
               </button>
-            );
-          })}
-          
-          <button
-            className="btn btn-secondary btn-sm"
-            disabled={pagination.page >= pagination.totalPages}
-            onClick={() => loadStudents(pagination.page + 1)}
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem', fontWeight: 600 }}
+                onClick={() => handleOpenBulkUpload(null)}
+              >
+                <Upload size={15} />
+                Bulk Upload Students
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem', fontWeight: 600 }}
+                onClick={() => handleOpenAdd('')}
+              >
+                <Plus size={16} />
+                Add Student
+              </button>
+            </div>
+          </div>
+
+          {/* Stat Overview Cards */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1.5rem',
+            }}
           >
-            Next
-          </button>
+            <div
+              className="card"
+              style={{
+                padding: '1.25rem',
+                borderLeft: '4px solid var(--primary, #4f46e5)',
+                boxShadow: 'var(--shadow-sm)',
+                backgroundColor: '#ffffff',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              <div style={{ fontSize: '1.85rem', fontWeight: 700, color: 'var(--primary, #4f46e5)', lineHeight: 1.1 }}>
+                {totalStudents}
+              </div>
+              <h3 style={{ fontSize: '0.925rem', color: 'var(--text-main)', fontWeight: 600, margin: '0.4rem 0 0.15rem' }}>
+                Total Students
+              </h3>
+              <p style={{ fontSize: '0.775rem', color: 'var(--text-muted)', margin: 0 }}>
+                Across all enrolled classes
+              </p>
+            </div>
+
+            <div
+              className="card"
+              style={{
+                padding: '1.25rem',
+                borderLeft: '4px solid #0284c7',
+                boxShadow: 'var(--shadow-sm)',
+                backgroundColor: '#ffffff',
+                borderRadius: 'var(--radius-md)',
+              }}
+            >
+              <div style={{ fontSize: '1.85rem', fontWeight: 700, color: '#0284c7', lineHeight: 1.1 }}>
+                {filteredClassSummaries.length}
+              </div>
+              <h3 style={{ fontSize: '0.925rem', color: 'var(--text-main)', fontWeight: 600, margin: '0.4rem 0 0.15rem' }}>
+                Active Classes
+              </h3>
+              <p style={{ fontSize: '0.775rem', color: 'var(--text-muted)', margin: 0 }}>
+                Classes with student enrollment
+              </p>
+            </div>
+          </div>
+
+          {/* Toolbar: Master Search */}
+          <div
+            className="card"
+            style={{
+              padding: '0.85rem 1.25rem',
+              border: '1px solid var(--border-subtle, #e2e8f0)',
+              borderRadius: 'var(--radius-md, 6px)',
+              backgroundColor: '#ffffff',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main, #0f172a)' }}>
+                Classes Overview
+              </span>
+              {masterSearch && (
+                <span
+                  style={{
+                    backgroundColor: '#eef2ff',
+                    color: '#4338ca',
+                    padding: '0.15rem 0.55rem',
+                    borderRadius: '9999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Master Search Active
+                </span>
+              )}
+            </div>
+
+            {/* Master Search Input */}
+            <div style={{ position: 'relative', flex: '1 1 360px', maxWidth: '480px', minWidth: '260px' }}>
+              <Search
+                size={14}
+                style={{
+                  position: 'absolute',
+                  left: '0.75rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted, #94a3b8)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Search by student name, roll no, admission no, or phone..."
+                className="form-input"
+                style={{
+                  paddingLeft: '2.2rem',
+                  paddingRight: masterSearch ? '2.2rem' : '0.75rem',
+                  fontSize: '0.825rem',
+                  height: '36px',
+                  width: '100%',
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--border-subtle, #cbd5e1)',
+                  backgroundColor: '#ffffff',
+                  boxSizing: 'border-box',
+                }}
+                value={masterSearch}
+                onChange={(e) => setMasterSearch(e.target.value)}
+              />
+              {masterSearch && (
+                <button
+                  type="button"
+                  onClick={() => setMasterSearch('')}
+                  style={{
+                    position: 'absolute',
+                    right: '0.65rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted, #94a3b8)',
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                    fontSize: '1rem',
+                    lineHeight: 1,
+                    borderRadius: '50%',
+                  }}
+                  title="Clear master search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* 1A. MASTER SEARCH RESULTS (Shown when masterSearch query is active)       */}
+          {/* ========================================================================= */}
+          {masterSearch && masterSearch.trim() ? (
+            <div
+              className="card"
+              style={{
+                border: '1px solid var(--border-subtle, #e2e8f0)',
+                borderRadius: 'var(--radius-md, 6px)',
+                backgroundColor: '#ffffff',
+                boxShadow: 'var(--shadow-sm)',
+                overflow: 'hidden',
+                marginBottom: '2rem',
+              }}
+            >
+              <div
+                style={{
+                  padding: '1rem 1.25rem',
+                  borderBottom: '1px solid var(--border-subtle, #e2e8f0)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#ffffff',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
+                    Master Search Results
+                  </div>
+                  <span
+                    style={{
+                      backgroundColor: '#eef2ff',
+                      color: '#4338ca',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '9999px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {filteredMasterStudents.length} student{filteredMasterStudents.length === 1 ? '' : 's'} found
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setMasterSearch('')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    fontSize: '0.8rem',
+                    padding: '0.3rem 0.65rem',
+                  }}
+                >
+                  Clear Search
+                </button>
+              </div>
+
+              {/* If any classes match the query */}
+              {matchingClasses.length > 0 && (
+                <div
+                  style={{
+                    padding: '0.65rem 1.25rem',
+                    backgroundColor: '#f8fafc',
+                    borderBottom: '1px solid var(--border-subtle, #e2e8f0)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    flexWrap: 'wrap',
+                    fontSize: '0.825rem',
+                  }}
+                >
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Matching Classes:</span>
+                  {matchingClasses.map((c) => (
+                    <button
+                      key={c.className}
+                      type="button"
+                      onClick={() => handleOpenClassDetails(c.className)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '0.25rem 0.6rem',
+                        borderRadius: '4px',
+                        backgroundColor: '#eef2ff',
+                        color: '#3730a3',
+                        border: '1px solid #c7d2fe',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {c.className} ({c.studentCount} students) <ChevronRight size={13} />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="table-responsive">
+                <table className="table" style={{ margin: 0 }}>
+                  <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle, #e2e8f0)' }}>
+                    <tr>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADM NO</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>NAME</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>CLASS & SECTION</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>PARENT CONTACT</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADDRESS</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingMasterSearch ? (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            <RotateCcw size={22} className="animate-spin text-primary" />
+                            <span style={{ fontSize: '0.9rem' }}>Searching all students for &quot;{masterSearch}&quot;...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredMasterStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                            <Search size={32} style={{ opacity: 0.35, color: 'var(--text-muted)', marginBottom: '0.25rem' }} />
+                            <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
+                              No students found
+                            </span>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '460px', lineHeight: 1.45 }}>
+                              No student records matched &quot;{masterSearch}&quot;. Try searching with a different student name, roll number, admission number, or phone number.
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ marginTop: '0.5rem' }}
+                              onClick={() => setMasterSearch('')}
+                            >
+                              Reset to Classes Overview
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredMasterStudents.map((s) => (
+                        <tr
+                          key={s.id}
+                          style={{ transition: 'background-color 0.12s ease' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                        >
+                          <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                            {s.admissionNumber}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.925rem' }}>
+                              {s.name}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              {s.dateOfBirth ? `DOB: ${s.dateOfBirth}` : ''} {s.gender ? `| ${s.gender}` : ''}
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenClassDetails(s.className)}
+                              title={`Open ${s.className} records`}
+                              style={{
+                                backgroundColor: '#eef2ff',
+                                color: '#3730a3',
+                                padding: '0.25rem 0.6rem',
+                                borderRadius: '4px',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                              }}
+                            >
+                              {s.className}{s.section ? ` - ${s.section}` : ''}
+                              <ChevronRight size={13} />
+                            </button>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <div style={{ fontSize: '0.825rem', lineHeight: '1.45' }}>
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Father: </span>
+                                <span style={{ fontWeight: 500 }}>{s.fatherMobileNumber || s.contactNumber || '—'}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Mother: </span>
+                                <span style={{ fontWeight: 500 }}>{s.motherMobileNumber || '—'}</span>
+                              </div>
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Guardian: </span>
+                                <span style={{ fontWeight: 500 }}>{s.guardianMobileNumber || '—'}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                            {s.address || '—'}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                              <button
+                                onClick={() => handleOpenEdit(s)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '0.35rem 0.55rem' }}
+                                title="Edit student profile"
+                              >
+                                <Edit2 size={14} />
+                              </button>
+                              <button
+                                onClick={() => openDeleteModal(s)}
+                                className="btn btn-danger btn-sm"
+                                style={{ padding: '0.35rem 0.55rem' }}
+                                title="Delete student"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {masterPagination.total > 0 && masterPagination.totalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1.25rem', borderTop: '1px solid var(--border-subtle, #e2e8f0)', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    Showing {(masterPagination.page - 1) * masterPagination.pageSize + 1}–{Math.min(masterPagination.page * masterPagination.pageSize, masterPagination.total)} of {masterPagination.total} matching students across all classes
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      disabled={masterPagination.page <= 1}
+                      onClick={() => handleMasterSearch(masterSearch, masterPagination.page - 1)}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      disabled={masterPagination.page >= masterPagination.totalPages}
+                      onClick={() => handleMasterSearch(masterSearch, masterPagination.page + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ========================================================================= */
+            /* 1B. DEFAULT: CLASS STUDENT SUMMARY TABLE                                  */
+            /* ========================================================================= */
+            <div
+              className="card"
+              style={{
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: '#ffffff',
+                boxShadow: 'var(--shadow-sm)',
+                overflow: 'hidden',
+                marginBottom: '2rem',
+              }}
+            >
+              <div
+                style={{
+                  padding: '1rem 1.5rem',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Layers size={17} style={{ color: 'var(--primary)' }} />
+                  Class Student Summary
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {loadingSummaries ? (
+                    <span style={{ fontStyle: 'italic' }}>Loading...</span>
+                  ) : (
+                    `Showing ${filteredClassSummaries.length} classes in academic order`
+                  )}
+                </div>
+              </div>
+
+              <div className="table-responsive">
+                <table className="table" style={{ margin: 0 }}>
+                  <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <tr>
+                      <th style={{ padding: '0.75rem 1rem', width: '70px', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>#</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Class</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Students</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '160px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingSummaries ? (
+                      <tr>
+                        <td colSpan="4" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            <RotateCcw size={22} className="animate-spin text-primary" />
+                            <span style={{ fontSize: '0.9rem' }}>Loading class student summaries...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredClassSummaries.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                            <Users size={32} style={{ opacity: 0.35 }} />
+                            <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                              No student records found
+                            </span>
+                            <span style={{ fontSize: '0.825rem' }}>
+                              {classSummaries.length === 0
+                                ? 'No classes with enrolled students currently exist.'
+                                : 'No classes match your search query.'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredClassSummaries.map((item, idx) => (
+                        <tr
+                          key={item.className || idx}
+                          style={{ transition: 'background-color 0.12s ease' }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                        >
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.825rem' }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                            <span
+                              style={{
+                                backgroundColor: '#eef2ff',
+                                color: '#3730a3',
+                                padding: '0.25rem 0.65rem',
+                                borderRadius: '4px',
+                                fontSize: '0.85rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {item.className}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
+                            {item.studentCount}
+                          </td>
+                          <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{
+                                padding: '0.3rem 0.75rem',
+                                fontSize: '0.8rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                fontWeight: 600,
+                                color: 'var(--primary)',
+                              }}
+                              onClick={() => handleOpenClassDetails(item.className)}
+                            >
+                              View <ChevronRight size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. CLASS-SPECIFIC STUDENT RECORDS VIEW */}
+      {/* ========================================================================= */}
+      {view === 'class-details' && (
+        <div>
+          {/* Compact Breadcrumb */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              marginBottom: '0.45rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleBackToSummary}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary, #4f46e5)',
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              Students
+            </button>
+            <span style={{ color: 'var(--text-muted, #94a3b8)', fontWeight: 400, opacity: 0.6 }}>/</span>
+            <button
+              type="button"
+              onClick={handleBackToSummary}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary, #4f46e5)',
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              Student Directory
+            </button>
+            <span style={{ color: 'var(--text-muted, #94a3b8)', fontWeight: 400, opacity: 0.6 }}>/</span>
+            <span style={{ color: 'var(--text-main, #0f172a)', fontWeight: 700 }}>
+              {selectedClass}
+            </span>
+          </div>
+
+          {/* Consistent, Compact Back to Summary Button */}
+          <div style={{ marginBottom: '0.65rem' }}>
+            <button
+              type="button"
+              onClick={handleBackToSummary}
+              className="btn btn-secondary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                height: '32px',
+                padding: '0 0.75rem',
+                fontSize: '0.825rem',
+                fontWeight: 500,
+                borderRadius: 'var(--radius-md, 6px)',
+                backgroundColor: '#ffffff',
+                border: '1px solid var(--border-subtle, #e2e8f0)',
+                color: 'var(--text-main, #334155)',
+                cursor: 'pointer',
+                boxShadow: 'var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.04))',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#f8fafc';
+                e.currentTarget.style.borderColor = '#cbd5e1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#ffffff';
+                e.currentTarget.style.borderColor = 'var(--border-subtle, #e2e8f0)';
+              }}
+            >
+              <ArrowLeft size={14} /> Back to Summary
+            </button>
+          </div>
+
+          {/* Page Title & Subtitle */}
+          <div style={{ marginBottom: '1rem' }}>
+            <h1
+              style={{
+                fontSize: '1.65rem',
+                fontWeight: 800,
+                margin: 0,
+                color: 'var(--text-main, #0f172a)',
+                lineHeight: 1.25,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {selectedClass} — Student Records
+            </h1>
+            <p
+              style={{
+                color: 'var(--text-muted, #64748b)',
+                fontSize: '0.875rem',
+                margin: '0.25rem 0 0',
+                lineHeight: 1.4,
+              }}
+            >
+              Active student directory profiles and contact records for {selectedClass}.
+            </p>
+          </div>
+
+          {/* Compact Toolbar: Search + Action Buttons */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            {/* Search Box taking most of available width */}
+            <div style={{ flex: '1 1 380px', minWidth: '260px', position: 'relative' }}>
+              <Search
+                size={15}
+                style={{
+                  position: 'absolute',
+                  left: '0.85rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted, #94a3b8)',
+                  pointerEvents: 'none',
+                }}
+              />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search by student name, admission no, or parent mobile..."
+                value={classSearch}
+                onChange={(e) => setClassSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  paddingLeft: '2.4rem',
+                  paddingRight: classSearch ? '2.4rem' : '0.85rem',
+                  fontSize: '0.85rem',
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--border-subtle, #cbd5e1)',
+                  backgroundColor: '#ffffff',
+                  boxSizing: 'border-box',
+                }}
+              />
+              {classSearch && (
+                <button
+                  type="button"
+                  onClick={() => setClassSearch('')}
+                  style={{
+                    position: 'absolute',
+                    right: '0.65rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted, #94a3b8)',
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                    fontSize: '1rem',
+                    lineHeight: 1,
+                    borderRadius: '50%',
+                  }}
+                  title="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            {/* Compact Action Buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.825rem',
+                  height: '38px',
+                  padding: '0 0.85rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-md, 6px)',
+                  border: '1px solid var(--border-subtle, #e2e8f0)',
+                  backgroundColor: '#ffffff',
+                  color: 'var(--text-main, #334155)',
+                  whiteSpace: 'nowrap',
+                }}
+                onClick={() => handleOpenBulkUpload(selectedClass)}
+              >
+                <Upload size={14} />
+                Bulk Upload
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.825rem',
+                  height: '38px',
+                  padding: '0 0.95rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-md, 6px)',
+                  backgroundColor: 'var(--primary, #4f46e5)',
+                  color: '#ffffff',
+                  border: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+                onClick={() => handleOpenAdd(selectedClass)}
+              >
+                <Plus size={15} />
+                Add Student
+              </button>
+            </div>
+          </div>
+
+          {/* Class Students Table */}
+          <div className="table-container" style={{ backgroundColor: '#ffffff', borderRadius: 'var(--radius-md, 6px)', border: '1px solid var(--border-subtle, #e2e8f0)', boxShadow: 'var(--shadow-sm)' }}>
+            <table className="table" style={{ margin: 0 }}>
+              <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle, #e2e8f0)' }}>
+                <tr>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADM NO</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>NAME</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>CLASS & SECTION</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>PARENT CONTACT</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADDRESS</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingStudents ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                        <RotateCcw size={22} className="animate-spin text-primary" />
+                        <span style={{ fontSize: '0.9rem' }}>Fetching {selectedClass} students...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3.5rem 1rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+                        <Search size={32} style={{ opacity: 0.35, color: 'var(--text-muted)', marginBottom: '0.25rem' }} />
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
+                          No students found
+                        </span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '440px', lineHeight: 1.45 }}>
+                          Try searching with a different student name, admission number, or parent mobile number.
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((s) => (
+                    <tr
+                      key={s.id}
+                      style={{ transition: 'background-color 0.12s ease' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                    >
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        {s.admissionNumber}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.925rem' }}>
+                          {s.name}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {s.dateOfBirth ? `DOB: ${s.dateOfBirth}` : ''} {s.gender ? `| ${s.gender}` : ''}
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <span
+                          style={{
+                            backgroundColor: '#eef2ff',
+                            color: '#3730a3',
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '4px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {s.className}{s.section ? ` - ${s.section}` : ''}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ fontSize: '0.825rem', lineHeight: '1.45' }}>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)' }}>Father: </span>
+                            <span style={{ fontWeight: 500 }}>{s.fatherMobileNumber || s.contactNumber || '—'}</span>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)' }}>Mother: </span>
+                            <span style={{ fontWeight: 500 }}>{s.motherMobileNumber || '—'}</span>
+                          </div>
+                          <div>
+                            <span style={{ color: 'var(--text-muted)' }}>Guardian: </span>
+                            <span style={{ fontWeight: 500 }}>{s.guardianMobileNumber || '—'}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                        {s.address || '—'}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                          <button
+                            onClick={() => handleOpenEdit(s)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.35rem 0.55rem' }}
+                            title="Edit student profile"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(s)}
+                            className="btn btn-danger btn-sm"
+                            style={{ padding: '0.35rem 0.55rem' }}
+                            title="Delete student"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          {pagination.total > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                {classSearch && classSearch.trim()
+                  ? `Showing ${filteredStudents.length} matching students in ${selectedClass}`
+                  : `Showing ${(pagination.page - 1) * pagination.pageSize + 1}–${Math.min(pagination.page * pagination.pageSize, pagination.total)} of ${pagination.total} students in ${selectedClass}`}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() => loadStudentsForClass(selectedClass, classSearch, pagination.page - 1)}
+                >
+                  Previous
+                </button>
+
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum = pagination.page;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (pagination.page <= 3) {
+                    pageNum = i + 1;
+                  } else if (pagination.page >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = pagination.page - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      className={`btn btn-sm ${pageNum === pagination.page ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => loadStudentsForClass(selectedClass, classSearch, pageNum)}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                <button
+                  className="btn btn-secondary btn-sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => loadStudentsForClass(selectedClass, classSearch, pagination.page + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. MODALS (Add/Edit Student, Bulk Upload, Delete Confirmation) */}
+      {/* ========================================================================= */}
 
       {/* Add / Edit Student Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingStudent ? 'Edit Student Profile' : 'Add Student'}
+        title={editingStudent ? 'Edit Student Profile' : (selectedClass ? `Add Individual Student — ${selectedClass}` : 'Add Student')}
         footer={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
@@ -416,11 +1496,7 @@ export const StudentsPage = () => {
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">S.No</label>
-              <input type="text" className="form-input" disabled value="Auto-generated" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Adm No</label>
+              <label className="form-label">Adm No *</label>
               <input
                 type="text"
                 className="form-input"
@@ -430,11 +1506,8 @@ export const StudentsPage = () => {
                 onChange={(e) => setFormData({ ...formData, admNo: e.target.value })}
               />
             </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Name</label>
+              <label className="form-label">Name *</label>
               <input
                 type="text"
                 className="form-input"
@@ -444,54 +1517,50 @@ export const StudentsPage = () => {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
-              <label className="form-label">Class</label>
+              <label className="form-label">Class *</label>
               <input
                 type="text"
                 className="form-input"
                 required
-                placeholder="Enter class"
+                placeholder="e.g. Class 10, LKG, UKG"
                 value={formData.className}
                 onChange={(e) => setFormData({ ...formData, className: e.target.value })}
               />
             </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Section</label>
               <input
                 type="text"
                 className="form-input"
-                required
-                placeholder="Enter section"
+                placeholder="Enter section (e.g. A, B)"
                 value={formData.section}
                 onChange={(e) => setFormData({ ...formData, section: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">DOB</label>
-              <input
-                type="date"
-                className="form-input"
-                required
-                placeholder="Select date of birth"
-                value={formData.dob}
-                onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
               />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group">
+              <label className="form-label">DOB</label>
+              <input
+                type="date"
+                className="form-input"
+                value={formData.dob}
+                onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
               <label className="form-label">Gender</label>
               <select
                 className="form-input"
-                required
                 value={formData.gender}
                 onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
               >
-                <option value="" disabled>Select gender</option>
+                <option value="">Select gender</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
                 <option value="Other">Other</option>
@@ -500,7 +1569,7 @@ export const StudentsPage = () => {
           </div>
 
           <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
-          
+
           <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)' }}>
             Parent / Guardian Information
           </h3>
@@ -517,6 +1586,19 @@ export const StudentsPage = () => {
               />
             </div>
             <div className="form-group">
+              <label className="form-label">Father Mobile Number</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter father's mobile number"
+                value={formData.fatherMobileNumber}
+                onChange={(e) => setFormData({ ...formData, fatherMobileNumber: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-group">
               <label className="form-label">Mother Name</label>
               <input
                 type="text"
@@ -526,17 +1608,39 @@ export const StudentsPage = () => {
                 onChange={(e) => setFormData({ ...formData, motherName: e.target.value })}
               />
             </div>
+            <div className="form-group">
+              <label className="form-label">Mother Mobile Number</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter mother's mobile number"
+                value={formData.motherMobileNumber}
+                onChange={(e) => setFormData({ ...formData, motherMobileNumber: e.target.value })}
+              />
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Guardian Name</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Enter guardian's name"
-              value={formData.guardianName}
-              onChange={(e) => setFormData({ ...formData, guardianName: e.target.value })}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">Guardian Name</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter guardian's name"
+                value={formData.guardianName}
+                onChange={(e) => setFormData({ ...formData, guardianName: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Guardian Mobile Number</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter guardian's mobile number"
+                value={formData.guardianMobileNumber}
+                onChange={(e) => setFormData({ ...formData, guardianMobileNumber: e.target.value })}
+              />
+            </div>
           </div>
 
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem', fontStyle: 'italic' }}>
@@ -546,19 +1650,8 @@ export const StudentsPage = () => {
           <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
 
           <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)' }}>
-            Contact Information
+            Additional Information
           </h3>
-
-          <div className="form-group">
-            <label className="form-label">Mobile</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Enter mobile number"
-              value={formData.mobile}
-              onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-            />
-          </div>
 
           <div className="form-group">
             <label className="form-label">Address</label>
@@ -571,63 +1664,44 @@ export const StudentsPage = () => {
             />
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Blood Group</label>
-            <select
-              className="form-input"
-              value={formData.bloodGroup}
-              onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
-            >
-              <option value="" disabled>Select blood group</option>
-              <option value="A+">A+</option>
-              <option value="A-">A-</option>
-              <option value="B+">B+</option>
-              <option value="B-">B-</option>
-              <option value="AB+">AB+</option>
-              <option value="AB-">AB-</option>
-              <option value="O+">O+</option>
-              <option value="O-">O-</option>
-            </select>
-          </div>
-
-          <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
-
-          <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)' }}>
-            School Information
-          </h3>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">Blood Group</label>
+              <select
+                className="form-input"
+                value={formData.bloodGroup}
+                onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
+              >
+                <option value="">Select blood group</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+              </select>
+            </div>
             <div className="form-group">
               <label className="form-label">Joining Date</label>
               <input
                 type="date"
                 className="form-input"
-                placeholder="Select joining date"
                 value={formData.joiningDate}
                 onChange={(e) => setFormData({ ...formData, joiningDate: e.target.value })}
               />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Active Student</label>
-              <select
-                className="form-input"
-                value={formData.isActive ? 'Active' : 'Inactive'}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.value === 'Active' })}
-              >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </select>
             </div>
           </div>
 
           <hr style={{ margin: '1.5rem 0', borderColor: 'var(--border-color)', opacity: 0.5 }} />
 
           <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-color)' }}>
-            Student Portal Login
+            Parent Login Credentials
           </h3>
 
           <div className="form-group">
-            <label className="form-label">Phone Number</label>
+            <label className="form-label">Parent Login Phone Number</label>
             <input
               type="text"
               className="form-input"
@@ -639,13 +1713,36 @@ export const StudentsPage = () => {
 
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="Enter temporary password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showModalPassword ? 'text' : 'password'}
+                className="form-input"
+                placeholder={editingStudent ? 'Enter parent login password (leave empty to keep current)' : 'Enter parent login password'}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                style={{ paddingRight: '2.5rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowModalPassword(!showModalPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '0.8rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title={showModalPassword ? 'Hide password' : 'Show password'}
+              >
+                {showModalPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
         </form>
       </Modal>
@@ -654,58 +1751,60 @@ export const StudentsPage = () => {
       <BulkUploadModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
-        onSuccess={loadStudents}
+        onSuccess={() => {
+          if (view === 'class-details' && selectedClass) {
+            loadStudentsForClass(selectedClass, classSearch, pagination.page);
+          }
+          if (masterSearch) {
+            handleMasterSearch(masterSearch, 1);
+          }
+          loadClassSummaries();
+        }}
+        targetClass={bulkModalTargetClass}
       />
 
-      {/* Confirm Status Modal */}
-      {statusModal.isOpen && statusModal.student && (() => {
-        const isActivating = statusModal.student.isActive === false;
-        return (
-          <Modal
-            isOpen={statusModal.isOpen}
-            onClose={() => !statusModal.loading && setStatusModal({ isOpen: false, student: null, loading: false })}
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: isActivating ? 'var(--success, #10b981)' : 'var(--danger, #ef4444)' }}>
-                {isActivating ? <UserCheck size={20} /> : <AlertTriangle size={20} />}
-                {isActivating ? 'Reactivate Student' : 'Deactivate Student'}
-              </div>
-            }
-            footer={
-              <>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
-                  onClick={() => setStatusModal({ isOpen: false, student: null, loading: false })}
-                  disabled={statusModal.loading}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className={`btn ${isActivating ? 'btn-success' : 'btn-danger'}`}
-                  onClick={confirmToggleStatus}
-                  disabled={statusModal.loading}
-                >
-                  {statusModal.loading ? (isActivating ? 'Reactivating...' : 'Deactivating...') : (isActivating ? 'Reactivate Student' : 'Deactivate Student')}
-                </button>
-              </>
-            }
-          >
-            <div style={{ padding: '0.5rem 0' }}>
-              <p style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', fontSize: '1rem' }}>
-                {isActivating 
-                  ? 'Are you sure you want to reactivate this student?' 
-                  : 'Are you sure you want to deactivate this student?'}
-              </p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
-                {isActivating 
-                  ? 'The student will be moved back to Active status.' 
-                  : 'The student will be moved to Inactive status. The student record will not be permanently deleted.'}
-              </p>
+      {/* Confirm Delete Modal */}
+      {deleteModal.isOpen && deleteModal.student && (
+        <Modal
+          isOpen={deleteModal.isOpen}
+          onClose={() => !deleteModal.loading && setDeleteModal({ isOpen: false, student: null, loading: false })}
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--danger, #ef4444)' }}>
+              <AlertTriangle size={20} />
+              Delete Student
             </div>
-          </Modal>
-        );
-      })()}
+          }
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeleteModal({ isOpen: false, student: null, loading: false })}
+                disabled={deleteModal.loading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={confirmDelete}
+                disabled={deleteModal.loading}
+              >
+                {deleteModal.loading ? 'Deleting...' : 'Delete Student'}
+              </button>
+            </>
+          }
+        >
+          <div style={{ padding: '0.5rem 0' }}>
+            <p style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', fontSize: '1rem' }}>
+              Are you sure you want to delete student &quot;{deleteModal.student.name}&quot; ({deleteModal.student.admissionNumber})?
+            </p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+              This will permanently remove the student record from the directory.
+            </p>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

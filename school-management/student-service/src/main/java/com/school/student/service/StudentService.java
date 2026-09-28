@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,22 +28,77 @@ public class StudentService {
     private final StudentRepository studentRepository;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public Page<StudentDTO> searchStudents(String search, String status, Pageable pageable) {
+    public Page<StudentDTO> searchStudents(String search, String className, String status, Pageable pageable) {
         Specification<Student> spec = Specification.where(null);
         if (search != null && !search.isBlank()) {
-            String likeSearch = "%" + search.toLowerCase() + "%";
+            String likeSearch = "%" + search.toLowerCase().trim() + "%";
             spec = spec.and((root, query, cb) -> cb.or(
                 cb.like(cb.lower(root.get("name")), likeSearch),
                 cb.like(cb.lower(root.get("admissionNumber")), likeSearch),
-                cb.like(cb.lower(root.get("className")), likeSearch)
+                cb.like(cb.lower(root.get("fatherMobileNumber")), likeSearch),
+                cb.like(cb.lower(root.get("motherMobileNumber")), likeSearch),
+                cb.like(cb.lower(root.get("guardianMobileNumber")), likeSearch),
+                cb.like(cb.lower(root.get("contactNumber")), likeSearch),
+                cb.like(cb.lower(root.get("phoneNumber")), likeSearch)
             ));
+        }
+        if (className != null && !className.isBlank() && !"all".equalsIgnoreCase(className.trim()) && !"all classes".equalsIgnoreCase(className.trim())) {
+            spec = spec.and((root, query, cb) -> cb.equal(cb.lower(root.get("className")), className.toLowerCase().trim()));
         }
         if ("active".equalsIgnoreCase(status)) {
             spec = spec.and((root, query, cb) -> cb.isTrue(root.get("isActive")));
         } else if ("inactive".equalsIgnoreCase(status)) {
             spec = spec.and((root, query, cb) -> cb.isFalse(root.get("isActive")));
         }
-        return studentRepository.findAll(spec, pageable).map(this::toDTO);
+
+        List<Student> allMatched = new ArrayList<>(studentRepository.findAll(spec));
+        allMatched.sort((s1, s2) -> {
+            int classComp = com.school.student.util.AcademicClassOrder.CLASS_COMPARATOR.compare(s1.getClassName(), s2.getClassName());
+            if (classComp != 0) return classComp;
+            String sec1 = s1.getSection() != null ? s1.getSection() : "";
+            String sec2 = s2.getSection() != null ? s2.getSection() : "";
+            int secComp = sec1.compareToIgnoreCase(sec2);
+            if (secComp != 0) return secComp;
+            return com.school.student.util.AcademicClassOrder.compareNatural(s1.getAdmissionNumber(), s2.getAdmissionNumber());
+        });
+
+        int total = allMatched.size();
+        int fromIndex = (int) pageable.getOffset();
+        int toIndex = Math.min(fromIndex + pageable.getPageSize(), total);
+        List<StudentDTO> pageList = (fromIndex >= total) ? Collections.emptyList()
+                : allMatched.subList(fromIndex, toIndex).stream().map(this::toDTO).toList();
+
+        return new org.springframework.data.domain.PageImpl<>(pageList, pageable, total);
+    }
+
+    public List<java.util.Map<String, Object>> getClassStudentSummaries() {
+        List<Student> allStudents = studentRepository.findAll();
+        java.util.Map<String, Long> countByClass = new java.util.LinkedHashMap<>();
+        
+        for (Student s : allStudents) {
+            if (s.getClassName() != null && !s.getClassName().isBlank()) {
+                String cName = s.getClassName().trim();
+                if (cName.matches("(?i)class\\s*\\d+")) {
+                    cName = "Class " + cName.replaceAll("(?i)class\\s*", "").trim();
+                } else if ("lkg".equalsIgnoreCase(cName)) {
+                    cName = "LKG";
+                } else if ("ukg".equalsIgnoreCase(cName)) {
+                    cName = "UKG";
+                }
+                countByClass.put(cName, countByClass.getOrDefault(cName, 0L) + 1L);
+            }
+        }
+
+        return countByClass.entrySet().stream()
+                .filter(entry -> entry.getValue() > 0)
+                .sorted(java.util.Comparator.comparing(java.util.Map.Entry::getKey, com.school.student.util.AcademicClassOrder.CLASS_COMPARATOR))
+                .map(entry -> {
+                    java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+                    map.put("className", entry.getKey());
+                    map.put("studentCount", entry.getValue());
+                    return map;
+                })
+                .collect(java.util.stream.Collectors.toList());
     }
 
     public long countTotalStudents() { return studentRepository.count(); }
@@ -62,7 +119,9 @@ public class StudentService {
     }
 
     public List<String> getDistinctClasses() {
-        return studentRepository.findDistinctClassNames();
+        return studentRepository.findDistinctClassNames().stream()
+                .sorted(com.school.student.util.AcademicClassOrder.CLASS_COMPARATOR)
+                .toList();
     }
 
     public java.util.Map<String, List<StudentDTO>> getActiveStudentsGroupedByClass() {
@@ -126,7 +185,17 @@ public class StudentService {
         existing.setFatherName(dto.getFatherName());
         existing.setMotherName(dto.getMotherName());
         existing.setGuardianName(dto.getGuardianName());
-        existing.setContactNumber(dto.getContactNumber());
+        existing.setFatherMobileNumber(dto.getFatherMobileNumber());
+        existing.setMotherMobileNumber(dto.getMotherMobileNumber());
+        existing.setGuardianMobileNumber(dto.getGuardianMobileNumber());
+        String contact = dto.getContactNumber() != null && !dto.getContactNumber().isBlank()
+                ? dto.getContactNumber()
+                : (dto.getFatherMobileNumber() != null && !dto.getFatherMobileNumber().isBlank()
+                    ? dto.getFatherMobileNumber()
+                    : (dto.getMotherMobileNumber() != null && !dto.getMotherMobileNumber().isBlank()
+                        ? dto.getMotherMobileNumber()
+                        : dto.getGuardianMobileNumber()));
+        existing.setContactNumber(contact);
         existing.setAddress(dto.getAddress());
         existing.setBloodGroup(dto.getBloodGroup());
         existing.setJoiningDate(dto.getJoiningDate());
@@ -158,9 +227,51 @@ public class StudentService {
         return toDTO(updated);
     }
 
+    public com.school.student.dto.ParentAuthResultDTO verifyParentCredentials(String phoneNumber, String password) {
+        if (phoneNumber == null || phoneNumber.trim().isBlank()) {
+            throw new BadRequestException("Parent login phone number is required");
+        }
+        if (password == null || password.trim().isBlank()) {
+            throw new BadRequestException("Password is required");
+        }
+
+        String cleanPhone = phoneNumber.trim();
+        List<Student> students = studentRepository.findAllByPhoneNumber(cleanPhone);
+        if (students.isEmpty()) {
+            throw new BadRequestException("No student account found with this phone number");
+        }
+
+        for (Student s : students) {
+            if (s.getPasswordHash() != null && !s.getPasswordHash().isBlank()) {
+                if (passwordEncoder.matches(password, s.getPasswordHash())) {
+                    return com.school.student.dto.ParentAuthResultDTO.builder()
+                            .studentId(s.getId())
+                            .studentName(s.getName())
+                            .admissionNumber(s.getAdmissionNumber())
+                            .className(s.getClassName())
+                            .section(s.getSection())
+                            .phoneNumber(s.getPhoneNumber())
+                            .isActive(s.getIsActive())
+                            .build();
+                }
+            }
+        }
+
+        boolean anyConfigured = students.stream().anyMatch(s -> s.getPasswordHash() != null && !s.getPasswordHash().isBlank());
+        if (!anyConfigured) {
+            throw new BadRequestException("Parent login password has not been configured. Please contact the administrator.");
+        }
+
+        throw new BadRequestException("Invalid phone number or password");
+    }
+
     // --- Mapping helpers ---
 
     private StudentDTO toDTO(Student student) {
+        String fatherMobile = student.getFatherMobileNumber();
+        if ((fatherMobile == null || fatherMobile.isBlank()) && student.getContactNumber() != null) {
+            fatherMobile = student.getContactNumber();
+        }
         return StudentDTO.builder()
                 .id(student.getId())
                 .admissionNumber(student.getAdmissionNumber())
@@ -173,6 +284,9 @@ public class StudentService {
                 .fatherName(student.getFatherName())
                 .motherName(student.getMotherName())
                 .guardianName(student.getGuardianName())
+                .fatherMobileNumber(fatherMobile)
+                .motherMobileNumber(student.getMotherMobileNumber())
+                .guardianMobileNumber(student.getGuardianMobileNumber())
                 .contactNumber(student.getContactNumber())
                 .address(student.getAddress())
                 .bloodGroup(student.getBloodGroup())
@@ -183,6 +297,14 @@ public class StudentService {
     }
 
     private Student toEntity(StudentDTO dto) {
+        String contact = dto.getContactNumber() != null && !dto.getContactNumber().isBlank()
+                ? dto.getContactNumber()
+                : (dto.getFatherMobileNumber() != null && !dto.getFatherMobileNumber().isBlank()
+                    ? dto.getFatherMobileNumber()
+                    : (dto.getMotherMobileNumber() != null && !dto.getMotherMobileNumber().isBlank()
+                        ? dto.getMotherMobileNumber()
+                        : dto.getGuardianMobileNumber()));
+
         return Student.builder()
                 .admissionNumber(dto.getAdmissionNumber())
                 .name(dto.getName())
@@ -194,7 +316,10 @@ public class StudentService {
                 .fatherName(dto.getFatherName())
                 .motherName(dto.getMotherName())
                 .guardianName(dto.getGuardianName())
-                .contactNumber(dto.getContactNumber())
+                .fatherMobileNumber(dto.getFatherMobileNumber())
+                .motherMobileNumber(dto.getMotherMobileNumber())
+                .guardianMobileNumber(dto.getGuardianMobileNumber())
+                .contactNumber(contact)
                 .address(dto.getAddress())
                 .bloodGroup(dto.getBloodGroup())
                 .joiningDate(dto.getJoiningDate())

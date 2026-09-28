@@ -44,6 +44,26 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const parentLogin = async (credentials) => {
+    const res = await authService.parentLogin(credentials);
+    if (res.success && res.data) {
+      const authData = res.data;
+      const userInfo = {
+        userId: authData.userId,
+        name: authData.name,
+        email: authData.email,
+        role: authData.role,
+        studentId: authData.studentId ?? null,
+      };
+      localStorage.setItem('token', authData.token);
+      localStorage.setItem('user', JSON.stringify(userInfo));
+      setUser(userInfo);
+      return userInfo;
+    } else {
+      throw new Error(res.message || 'Login failed');
+    }
+  };
+
   const register = async (userData) => {
     const res = await authService.register(userData);
     return res;
@@ -64,6 +84,7 @@ export const AuthProvider = ({ children }) => {
     isTeacher: user?.role === 'TEACHER',
     isParent: user?.role === 'PARENT',
     login,
+    parentLogin,
     register,
     logout,
   };

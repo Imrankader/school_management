@@ -65,7 +65,7 @@ export const sortErrorsByAdmissionNumber = (errors) => {
   });
 };
 
-export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
+export const BulkUploadModal = ({ isOpen, onClose, onSuccess, targetClass }) => {
   const [file, setFile] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [fileProcessing, setFileProcessing] = useState(false);
@@ -199,19 +199,27 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await studentService.downloadBulkTemplate();
+      const response = await studentService.downloadBulkTemplate(targetClass);
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'student_import_template.xlsx');
+      const downloadFilename = targetClass
+        ? `${targetClass.replace(/\s+/g, '_')}_student_template.xlsx`
+        : 'student_import_template.xlsx';
+      link.setAttribute('download', downloadFilename);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
-      addToast('Template downloaded successfully', 'success');
+      addToast(
+        targetClass
+          ? `${targetClass} template with current students downloaded successfully`
+          : 'Template downloaded successfully',
+        'success'
+      );
     } catch (err) {
       console.error('Failed to download template', err);
       addToast('Failed to download template file', 'error');
@@ -252,13 +260,13 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
     }
 
     setLoading(true);
-    setLoadingStep('Uploading and validating students...');
+    setLoadingStep(targetClass ? `Validating and syncing ${targetClass} students...` : 'Uploading and validating students...');
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await studentService.bulkUpload(formData);
+      const response = await studentService.bulkUpload(formData, targetClass);
       const uploadResult = response.data || response;
 
       // Ensure errors are sorted by Admission No ascending
@@ -270,14 +278,18 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
       setLoading(false);
 
       if (uploadResult.success) {
-        addToast(
-          `Bulk Upload Successful: ${uploadResult.insertedCount} students enrolled!`,
-          'success'
-        );
+        if ((uploadResult.insertedCount || 0) === 0 && (uploadResult.updatedCount || 0) === 0 && (uploadResult.unchangedCount || 0) > 0) {
+          addToast('No new students found. All students in this file already exist.', 'info');
+        } else {
+          addToast(
+            `Sync Complete: ${uploadResult.insertedCount || 0} added, ${uploadResult.updatedCount || 0} updated`,
+            'success'
+          );
+        }
         if (onSuccess) onSuccess();
       } else {
         addToast(
-          `Bulk Upload Failed: ${uploadResult.errorCount} error(s) found. No students added.`,
+          `Bulk Upload Failed: ${uploadResult.errorCount || 1} error(s) found. No students added.`,
           'error'
         );
         if (uploadResult.errorExcelBase64) {
@@ -292,6 +304,8 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
       setResult({
         success: false,
         insertedCount: 0,
+        updatedCount: 0,
+        unchangedCount: 0,
         errorCount: 1,
         message: errorMsg,
         errors: [
@@ -299,7 +313,7 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
             row: 0,
             admissionNumber: '—',
             studentName: '—',
-            errorType: 'Server Error',
+            errorType: 'Validation Error',
             errorMessage: errorMsg,
           },
         ],
@@ -351,9 +365,16 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
             >
               <UploadCloud size={20} />
             </div>
-            <h3 className="card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
-              Bulk Student Upload
-            </h3>
+            <div>
+              <h3 className="card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
+                {targetClass ? `Bulk Student Upload — ${targetClass}` : 'Bulk Student Upload'}
+              </h3>
+              {targetClass && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Class-specific template & synchronization for {targetClass}
+                </div>
+              )}
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -375,9 +396,9 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
                 transition: 'all 0.2s',
                 boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)',
               }}
-              title="Download standard student import Excel template"
+              title={targetClass ? `Download template containing current ${targetClass} students` : 'Download standard student import Excel template'}
             >
-              <FileSpreadsheet size={16} /> Download Template
+              <FileSpreadsheet size={16} /> {targetClass ? `Download ${targetClass} Template` : 'Download Template'}
             </button>
 
             <button
@@ -432,52 +453,118 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
 
           {/* Success Result View */}
           {!loading && result && result.success && (
-            <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+            <div style={{ textAlign: 'center', padding: '1.25rem 0' }}>
               <div
                 style={{
-                  width: '64px',
-                  height: '64px',
+                  width: '60px',
+                  height: '60px',
                   borderRadius: '50%',
                   backgroundColor: 'var(--success-light)',
                   color: 'var(--success)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  margin: '0 auto 1.25rem',
+                  margin: '0 auto 1rem',
                 }}
               >
-                <CheckCircle2 size={36} />
+                <CheckCircle2 size={32} />
               </div>
-              <h3 style={{ fontSize: '1.35rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-                Bulk Upload Successful!
+              <h3 style={{ fontSize: '1.3rem', color: 'var(--text-main)', marginBottom: '0.4rem' }}>
+                Bulk Upload Successful
               </h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginBottom: '1.5rem' }}>
-                <strong style={{ color: 'var(--success)' }}>{result.insertedCount} students</strong> were added successfully to the database.
-              </p>
+
+              {(result.unchangedCount || 0) > 0 && (result.insertedCount || 0) === 0 && (result.updatedCount || 0) === 0 ? (
+                <div
+                  style={{
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1d4ed8',
+                    padding: '0.75rem 1.25rem',
+                    borderRadius: 'var(--radius-md)',
+                    margin: '0 auto 1.25rem',
+                    maxWidth: '560px',
+                    fontWeight: 600,
+                    fontSize: '0.925rem',
+                  }}
+                >
+                  No new students found. All students in this file already exist.
+                </div>
+              ) : (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1.25rem' }}>
+                  <strong style={{ color: 'var(--success)' }}>{result.insertedCount || 0} student(s) added</strong>,{' '}
+                  <strong style={{ color: '#0284c7' }}>{result.updatedCount || 0} updated</strong>.
+                </p>
+              )}
+
+              {/* 4-Stat Breakdown: Added | Updated | Already Exists | Failed */}
               <div
                 style={{
-                  display: 'inline-flex',
-                  gap: '1.5rem',
-                  padding: '1rem 2rem',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: '0.75rem',
+                  padding: '0.85rem',
                   background: 'var(--bg-main)',
                   borderRadius: 'var(--radius-md)',
                   border: '1px solid var(--border-subtle)',
-                  marginBottom: '1rem',
+                  marginBottom: '1.25rem',
+                  textAlign: 'center',
                 }}
               >
-                <div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>TOTAL ROWS</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{result.totalRows}</div>
+                <div style={{ padding: '0.4rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Added</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--success)' }}>{result.insertedCount || 0}</div>
                 </div>
-                <div style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: '1.5rem' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>STUDENTS ADDED</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--success)' }}>{result.insertedCount}</div>
+                <div style={{ padding: '0.4rem', borderLeft: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Updated</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#0284c7' }}>{result.updatedCount || 0}</div>
                 </div>
-                <div style={{ borderLeft: '1px solid var(--border-subtle)', paddingLeft: '1.5rem' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ERRORS</div>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-muted)' }}>0</div>
+                <div style={{ padding: '0.4rem', borderLeft: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Already Exists</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 700, color: '#64748b' }}>{result.unchangedCount || 0}</div>
+                </div>
+                <div style={{ padding: '0.4rem', borderLeft: '1px solid var(--border-subtle)' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Failed</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 700, color: (result.errorCount || 0) > 0 ? 'var(--danger)' : '#64748b' }}>{result.errorCount || 0}</div>
                 </div>
               </div>
+
+              {/* Row detail messages if available */}
+              {result.rowDetails && result.rowDetails.length > 0 && (
+                <div
+                  style={{
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: '#ffffff',
+                    textAlign: 'left',
+                    padding: '0.75rem 1rem',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+                    Activity Summary:
+                  </div>
+                  {result.rowDetails.map((rd, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        padding: '0.3rem 0',
+                        borderBottom: i < result.rowDetails.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        color: rd.action === 'ADDED' ? '#047857' : rd.action === 'UPDATED' ? '#0284c7' : '#64748b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                      }}
+                    >
+                      {rd.action === 'ADDED' && <span style={{ fontWeight: 700 }}>✓</span>}
+                      {rd.action === 'UPDATED' && <span style={{ fontWeight: 700 }}>✓</span>}
+                      {rd.action === 'UNCHANGED' && <span>•</span>}
+                      <span>{rd.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -697,13 +784,12 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
                     marginTop: '1.25rem',
                     padding: '1rem 1.15rem',
                     backgroundColor: '#f8fafc',
-                    border: `1px solid ${
-                      fileProcessingError
+                    border: `1px solid ${fileProcessingError
                         ? 'var(--danger-border)'
                         : fileProcessingSuccessful
-                        ? 'var(--success-border)'
-                        : 'var(--border-subtle)'
-                    }`,
+                          ? 'var(--success-border)'
+                          : 'var(--border-subtle)'
+                      }`,
                     borderRadius: 'var(--radius-md)',
                     transition: 'all 0.2s',
                   }}
@@ -718,13 +804,13 @@ export const BulkUploadModal = ({ isOpen, onClose, onSuccess }) => {
                           backgroundColor: fileProcessingError
                             ? '#fee2e2'
                             : fileProcessingSuccessful
-                            ? '#dcfce7'
-                            : 'var(--primary-light)',
+                              ? '#dcfce7'
+                              : 'var(--primary-light)',
                           color: fileProcessingError
                             ? 'var(--danger)'
                             : fileProcessingSuccessful
-                            ? 'var(--success)'
-                            : 'var(--primary)',
+                              ? 'var(--success)'
+                              : 'var(--primary)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',

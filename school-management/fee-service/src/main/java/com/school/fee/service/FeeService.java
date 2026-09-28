@@ -86,7 +86,7 @@ public class FeeService {
         }
 
         List<String> sortedClasses = new ArrayList<>(classSet);
-        sortedClasses.sort(this::naturalClassCompare);
+        sortedClasses.sort(FeeService::naturalClassCompare);
 
         List<ClassBillingSummaryDTO> summaries = new ArrayList<>();
         int sNo = 1;
@@ -297,6 +297,44 @@ public class FeeService {
     public FeeDTO createOrUpdateFee(FeeDTO dto) {
         if (dto.getStudentId() == null) {
             throw new BadRequestException("Student ID is required.");
+        }
+
+        // Validate student existence and active status in Student Portal
+        List<StudentInfoDTO> allStudents = studentServiceClient.getAllStudents();
+        StudentInfoDTO student = null;
+        if (allStudents != null) {
+            student = allStudents.stream()
+                    .filter(s -> s.getId() != null && s.getId().equals(dto.getStudentId()))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        if (student == null) {
+            throw new BadRequestException("Student with ID " + dto.getStudentId() + " does not exist in the Student Portal.");
+        }
+
+        if (Boolean.FALSE.equals(student.getIsActive())) {
+            throw new BadRequestException("Student '" + student.getName() + "' is inactive and cannot have billing created or modified.");
+        }
+
+        // Validate class consistency
+        if (dto.getClassName() != null && !dto.getClassName().isBlank() && student.getClassName() != null) {
+            if (!dto.getClassName().trim().equalsIgnoreCase(student.getClassName().trim())) {
+                throw new BadRequestException(String.format("Student %s belongs to %s, but %s was specified.",
+                        student.getAdmissionNumber() != null ? student.getAdmissionNumber() : student.getName(),
+                        student.getClassName(), dto.getClassName()));
+            }
+        }
+
+        // Ensure canonical student details from Student Portal are synchronized
+        if (dto.getStudentName() == null || dto.getStudentName().isBlank()) {
+            dto.setStudentName(student.getName());
+        }
+        if (dto.getAdmissionNumber() == null || dto.getAdmissionNumber().isBlank()) {
+            dto.setAdmissionNumber(student.getAdmissionNumber());
+        }
+        if (dto.getClassName() == null || dto.getClassName().isBlank()) {
+            dto.setClassName(student.getClassName());
         }
 
         // Calculate total amount from breakdown
@@ -549,28 +587,48 @@ public class FeeService {
                 .build();
     }
 
-    private int naturalClassCompare(String a, String b) {
+    public static int getClassAcademicRank(String className) {
+        if (className == null) return 999;
+        String s = className.trim().toUpperCase();
+        String clean = s.replaceAll("^(CLASS|GRADE|STANDARD|STD)\\s+", "").trim();
+
+        if (clean.equals("PRE-KG") || clean.equals("PREKG") || clean.equals("NURSERY")) return 0;
+        if (clean.equals("LKG") || clean.equals("L.K.G") || clean.equals("L.K.G.")) return 1;
+        if (clean.equals("UKG") || clean.equals("U.K.G") || clean.equals("U.K.G.")) return 2;
+
+        if (clean.equals("I")) return 3;
+        if (clean.equals("II")) return 4;
+        if (clean.equals("III")) return 5;
+        if (clean.equals("IV")) return 6;
+        if (clean.equals("V")) return 7;
+        if (clean.equals("VI")) return 8;
+        if (clean.equals("VII")) return 9;
+        if (clean.equals("VIII")) return 10;
+        if (clean.equals("IX")) return 11;
+        if (clean.equals("X")) return 12;
+        if (clean.equals("XI")) return 13;
+        if (clean.equals("XII")) return 14;
+
+        String digits = clean.replaceAll("\\D+", "");
+        if (!digits.isEmpty()) {
+            try {
+                int n = Integer.parseInt(digits);
+                return 2 + n;
+            } catch (NumberFormatException ignored) {}
+        }
+        return 100;
+    }
+
+    public static int naturalClassCompare(String a, String b) {
         if (a == null && b == null) return 0;
         if (a == null) return -1;
         if (b == null) return 1;
 
-        // Try extracting numbers from class names (e.g. "Class 9" vs "Class 10")
-        int numA = extractNumber(a);
-        int numB = extractNumber(b);
-
-        if (numA != -1 && numB != -1) {
-            return Integer.compare(numA, numB);
+        int rankA = getClassAcademicRank(a);
+        int rankB = getClassAcademicRank(b);
+        if (rankA != rankB) {
+            return Integer.compare(rankA, rankB);
         }
         return a.compareToIgnoreCase(b);
-    }
-
-    private int extractNumber(String s) {
-        String numStr = s.replaceAll("\\D+", "");
-        if (!numStr.isEmpty()) {
-            try {
-                return Integer.parseInt(numStr);
-            } catch (NumberFormatException ignored) {}
-        }
-        return -1;
     }
 }
