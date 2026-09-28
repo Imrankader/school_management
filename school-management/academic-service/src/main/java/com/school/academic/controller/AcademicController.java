@@ -110,6 +110,15 @@ public class AcademicController {
         return ResponseEntity.ok(ApiResponse.success("Subject updated", academicService.updateSubject(id, subject)));
     }
 
+    @DeleteMapping("/subjects/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteSubject(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyAdminRole(authHeader);
+        academicService.deleteSubject(id);
+        return ResponseEntity.ok(ApiResponse.success("Subject deleted", null));
+    }
+
     // ---- Exams ----
 
     @GetMapping("/exams")
@@ -130,6 +139,25 @@ public class AcademicController {
         Exam created = academicService.createExam(exam);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Exam created", created));
     }
+
+    @PutMapping("/exams/{id}")
+    public ResponseEntity<ApiResponse<Exam>> updateExam(
+            @PathVariable("id") Long id,
+            @RequestBody Exam exam,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyAdminRole(authHeader);
+        return ResponseEntity.ok(ApiResponse.success("Exam updated", academicService.updateExam(id, exam)));
+    }
+
+    @DeleteMapping("/exams/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteExam(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyAdminRole(authHeader);
+        academicService.deleteExam(id);
+        return ResponseEntity.ok(ApiResponse.success("Exam deleted", null));
+    }
+
 
     // ---- Marks ----
 

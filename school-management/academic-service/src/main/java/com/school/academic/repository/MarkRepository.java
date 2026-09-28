@@ -33,4 +33,29 @@ public interface MarkRepository extends JpaRepository<Mark, Long> {
             @Param("section") String section,
             @Param("examName") String examName,
             @Param("subjectName") String subjectName);
+
+    @Query("SELECT COUNT(m) > 0 FROM Mark m WHERE " +
+           "(:subjectId IS NOT NULL AND m.subjectId = :subjectId) OR " +
+           "(:subjectName IS NOT NULL AND TRIM(:subjectName) <> '' AND m.subjectName IS NOT NULL AND LOWER(TRIM(m.subjectName)) = LOWER(TRIM(:subjectName)))")
+    boolean existsBySubjectIdOrSubjectName(
+            @Param("subjectId") Long subjectId,
+            @Param("subjectName") String subjectName);
+
+    @Query("SELECT COUNT(m) > 0 FROM Mark m WHERE " +
+           "(:examId IS NOT NULL AND m.examId = :examId) OR " +
+           "(:examName IS NOT NULL AND TRIM(:examName) <> '' AND m.examName IS NOT NULL AND LOWER(TRIM(m.examName)) = LOWER(TRIM(:examName)))")
+    boolean existsByExamIdOrExamName(
+            @Param("examId") Long examId,
+            @Param("examName") String examName);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("UPDATE Mark m SET m.subjectName = :newName WHERE m.subjectId = :subjectId")
+    int updateSubjectNameForMarks(@Param("subjectId") Long subjectId, @Param("newName") String newName);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
+    @Query("UPDATE Mark m SET m.examName = :newName WHERE m.examId = :examId")
+    int updateExamNameForMarks(@Param("examId") Long examId, @Param("newName") String newName);
 }
+

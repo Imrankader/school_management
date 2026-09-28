@@ -34,6 +34,26 @@ public class GlobalExceptionHandler {
                         ex.getMessage(), request.getRequestURI()));
     }
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatus(org.springframework.web.server.ResponseStatusException ex,
+                                                               HttpServletRequest request) {
+        log.warn("Response status exception: {} - {}", ex.getStatusCode(), ex.getReason());
+        String reason = ex.getReason() != null ? ex.getReason() : ex.getMessage();
+        int statusCode = ex.getStatusCode().value();
+        return ResponseEntity.status(ex.getStatusCode())
+                .body(ErrorResponse.of(statusCode, ex.getStatusCode().toString(), reason, request.getRequestURI()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex,
+                                                               HttpServletRequest request) {
+        log.warn("Invalid argument: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Bad Request",
+                        ex.getMessage(), request.getRequestURI()));
+    }
+
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex,
                                                                  HttpServletRequest request) {

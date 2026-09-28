@@ -71,8 +71,28 @@ export const marksService = {
     return response.data;
   },
 
+  updateExam: async (id, examData) => {
+    const response = await api.put(`/api/academic/exams/${id}`, examData);
+    return response.data;
+  },
+
+  deleteExam: async (id) => {
+    const response = await api.delete(`/api/academic/exams/${id}`);
+    return response.data;
+  },
+
   createSubject: async (subjectData) => {
     const response = await api.post('/api/academic/subjects', subjectData);
+    return response.data;
+  },
+
+  updateSubject: async (id, subjectData) => {
+    const response = await api.put(`/api/academic/subjects/${id}`, subjectData);
+    return response.data;
+  },
+
+  deleteSubject: async (id) => {
+    const response = await api.delete(`/api/academic/subjects/${id}`);
     return response.data;
   },
 
@@ -81,5 +101,6 @@ export const marksService = {
     return response.data;
   }
 };
+
 
 export default marksService;

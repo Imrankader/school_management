@@ -74,8 +74,24 @@ export const MarksPage = () => {
   // Tab 4: Config Modal (Admin only)
   const [examModalOpen, setExamModalOpen] = useState(false);
   const [examForm, setExamForm] = useState({ name: '', examDate: new Date().toISOString().split('T')[0], totalMarks: 100 });
+  const [editingExam, setEditingExam] = useState(null); // null when adding, Exam object when editing
+  const [savingExam, setSavingExam] = useState(false);
+
   const [subjectModalOpen, setSubjectModalOpen] = useState(false);
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
+  const [editingSubject, setEditingSubject] = useState(null); // null when adding, Subject object when editing
+  const [savingSubject, setSavingSubject] = useState(false);
+
+  // Confirmation Modal for Deleting Subject or Exam
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({
+    isOpen: false,
+    type: null, // 'subject' | 'exam'
+    item: null,
+    title: '',
+    message: '',
+  });
+  const [deletingItem, setDeletingItem] = useState(false);
+
 
   // Grade helper
   const calculateGrade = (score, max = 100) => {
@@ -529,32 +545,186 @@ export const MarksPage = () => {
     link.remove();
   };
 
-  // Tab 4: Config Handlers
-  const handleCreateExam = async (e) => {
+  // Tab 4: Config Handlers — Subjects & Exams Management
+  const handleOpenAddExam = () => {
+    setEditingExam(null);
+    setExamForm({ name: '', examDate: new Date().toISOString().split('T')[0], totalMarks: 100 });
+    setExamModalOpen(true);
+  };
+
+  const handleOpenEditExam = (ex) => {
+    setEditingExam(ex);
+    setExamForm({
+      name: ex.name || '',
+      examDate: ex.examDate || new Date().toISOString().split('T')[0],
+      totalMarks: ex.totalMarks || 100,
+    });
+    setExamModalOpen(true);
+  };
+
+  const handleSaveExam = async (e) => {
     e.preventDefault();
+    const nameTrimmed = (examForm.name || '').trim();
+    if (!nameTrimmed) {
+      addToast('Exam Name is required', 'warning');
+      return;
+    }
+
+    // Frontend duplicate check
+    const currentId = editingExam ? editingExam.id : null;
+    const duplicate = exams.find(ex => ex.id !== currentId && ex.name && ex.name.trim().toLowerCase() === nameTrimmed.toLowerCase());
+    if (duplicate) {
+      addToast(`Exam with name "${nameTrimmed}" already exists.`, 'warning');
+      return;
+    }
+
     try {
-      await marksService.createExam(examForm);
-      addToast('Exam created successfully!', 'success');
+      setSavingExam(true);
+      if (editingExam) {
+        await marksService.updateExam(editingExam.id, {
+          ...editingExam,
+          name: nameTrimmed,
+          examDate: examForm.examDate,
+          totalMarks: Number(examForm.totalMarks) || 100,
+        });
+        addToast('Exam updated successfully!', 'success');
+      } else {
+        await marksService.createExam({
+          name: nameTrimmed,
+          examDate: examForm.examDate,
+          totalMarks: Number(examForm.totalMarks) || 100,
+        });
+        addToast('Exam created successfully!', 'success');
+      }
       setExamModalOpen(false);
+      setEditingExam(null);
       setExamForm({ name: '', examDate: new Date().toISOString().split('T')[0], totalMarks: 100 });
       loadMasterData();
     } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to create exam', 'error');
+      console.error('Error saving exam:', err);
+      const errorMsg = err.response?.data?.message || (editingExam ? 'Failed to update exam' : 'Failed to create exam');
+      addToast(errorMsg, 'error');
+    } finally {
+      setSavingExam(false);
     }
   };
 
-  const handleCreateSubject = async (e) => {
+  const handleOpenDeleteExam = (ex) => {
+    setDeleteConfirmModal({
+      isOpen: true,
+      type: 'exam',
+      item: ex,
+      title: 'Delete Exam',
+      message: 'Are you sure you want to delete this exam?',
+    });
+  };
+
+  const handleOpenAddSubject = () => {
+    setEditingSubject(null);
+    setSubjectForm({ name: '', code: '' });
+    setSubjectModalOpen(true);
+  };
+
+  const handleOpenEditSubject = (sub) => {
+    setEditingSubject(sub);
+    setSubjectForm({
+      name: sub.name || '',
+      code: sub.code || '',
+    });
+    setSubjectModalOpen(true);
+  };
+
+  const handleSaveSubject = async (e) => {
     e.preventDefault();
+    const nameTrimmed = (subjectForm.name || '').trim();
+    const codeTrimmed = (subjectForm.code || '').trim();
+
+    if (!nameTrimmed) {
+      addToast('Subject Name is required', 'warning');
+      return;
+    }
+    if (!codeTrimmed) {
+      addToast('Subject Code is required', 'warning');
+      return;
+    }
+
+    // Frontend duplicate check
+    const currentId = editingSubject ? editingSubject.id : null;
+    const duplicateName = subjects.find(s => s.id !== currentId && s.name && s.name.trim().toLowerCase() === nameTrimmed.toLowerCase());
+    if (duplicateName) {
+      addToast(`Subject with name "${nameTrimmed}" already exists.`, 'warning');
+      return;
+    }
+    const duplicateCode = subjects.find(s => s.id !== currentId && s.code && s.code.trim().toLowerCase() === codeTrimmed.toLowerCase());
+    if (duplicateCode) {
+      addToast(`Subject with code "${codeTrimmed}" already exists.`, 'warning');
+      return;
+    }
+
     try {
-      await marksService.createSubject(subjectForm);
-      addToast('Subject created successfully!', 'success');
+      setSavingSubject(true);
+      if (editingSubject) {
+        await marksService.updateSubject(editingSubject.id, {
+          ...editingSubject,
+          name: nameTrimmed,
+          code: codeTrimmed,
+        });
+        addToast('Subject updated successfully!', 'success');
+      } else {
+        await marksService.createSubject({
+          name: nameTrimmed,
+          code: codeTrimmed,
+        });
+        addToast('Subject created successfully!', 'success');
+      }
       setSubjectModalOpen(false);
+      setEditingSubject(null);
       setSubjectForm({ name: '', code: '' });
       loadMasterData();
     } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to create subject', 'error');
+      console.error('Error saving subject:', err);
+      const errorMsg = err.response?.data?.message || (editingSubject ? 'Failed to update subject' : 'Failed to create subject');
+      addToast(errorMsg, 'error');
+    } finally {
+      setSavingSubject(false);
     }
   };
+
+  const handleOpenDeleteSubject = (sub) => {
+    setDeleteConfirmModal({
+      isOpen: true,
+      type: 'subject',
+      item: sub,
+      title: 'Delete Subject',
+      message: 'Are you sure you want to delete this subject?',
+    });
+  };
+
+  const handleConfirmDelete = async () => {
+    const { type, item } = deleteConfirmModal;
+    if (!item) return;
+
+    try {
+      setDeletingItem(true);
+      if (type === 'subject') {
+        await marksService.deleteSubject(item.id);
+        addToast('Subject deleted successfully!', 'success');
+      } else if (type === 'exam') {
+        await marksService.deleteExam(item.id);
+        addToast('Exam deleted successfully!', 'success');
+      }
+      setDeleteConfirmModal({ isOpen: false, type: null, item: null, title: '', message: '' });
+      loadMasterData();
+    } catch (err) {
+      console.error(`Error deleting ${type}:`, err);
+      const errorMsg = err.response?.data?.message || `Failed to delete ${type}`;
+      addToast(errorMsg, 'error');
+      setDeleteConfirmModal({ isOpen: false, type: null, item: null, title: '', message: '' });
+    } finally {
+      setDeletingItem(false);
+    }
+  };
+
 
   // Filtered records in View tab
   const filteredRecords = records.filter(r => {
@@ -1346,10 +1516,10 @@ export const MarksPage = () => {
               <button
                 type="button"
                 className="btn btn-primary"
-                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
-                onClick={() => setExamModalOpen(true)}
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                onClick={handleOpenAddExam}
               >
-                <Plus size={14} style={{ marginRight: '4px' }} /> Add Exam
+                <Plus size={14} /> Add Exam
               </button>
             </div>
             <div className="table-container">
@@ -1359,6 +1529,7 @@ export const MarksPage = () => {
                     <th>Exam Name</th>
                     <th>Exam Date</th>
                     <th>Total Marks</th>
+                    <th style={{ textAlign: 'right', minWidth: '130px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1367,8 +1538,37 @@ export const MarksPage = () => {
                       <td><span className="badge badge-primary" style={{ fontWeight: 600 }}>{ex.name}</span></td>
                       <td>{ex.examDate || '—'}</td>
                       <td>{ex.totalMarks || 100}</td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: 'var(--primary)' }}
+                            onClick={() => handleOpenEditExam(ex)}
+                            title="Edit Exam"
+                          >
+                            <Edit size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#ef4444' }}
+                            onClick={() => handleOpenDeleteExam(ex)}
+                            title="Delete Exam"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
+                  {exams.length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+                        No exams registered yet.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1381,10 +1581,10 @@ export const MarksPage = () => {
               <button
                 type="button"
                 className="btn btn-primary"
-                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
-                onClick={() => setSubjectModalOpen(true)}
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                onClick={handleOpenAddSubject}
               >
-                <Plus size={14} style={{ marginRight: '4px' }} /> Add Subject
+                <Plus size={14} /> Add Subject
               </button>
             </div>
             <div className="table-container">
@@ -1393,6 +1593,7 @@ export const MarksPage = () => {
                   <tr>
                     <th>Subject Name</th>
                     <th>Code</th>
+                    <th style={{ textAlign: 'right', minWidth: '130px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1400,8 +1601,37 @@ export const MarksPage = () => {
                     <tr key={sub.id}>
                       <td><strong>{sub.name}</strong></td>
                       <td><span className="badge badge-secondary">{sub.code || '—'}</span></td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.4rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: 'var(--primary)' }}
+                            onClick={() => handleOpenEditSubject(sub)}
+                            title="Edit Subject"
+                          >
+                            <Edit size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#ef4444' }}
+                            onClick={() => handleOpenDeleteSubject(sub)}
+                            title="Delete Subject"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
+                  {subjects.length === 0 && (
+                    <tr>
+                      <td colSpan={3} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+                        No subjects registered yet.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1485,15 +1715,15 @@ export const MarksPage = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD EXAM (Admin) */}
+      {/* MODAL: ADD / EDIT EXAM (Admin) */}
       {/* ========================================================================= */}
       {examModalOpen && (
         <Modal
           isOpen={examModalOpen}
-          onClose={() => setExamModalOpen(false)}
-          title="Add School Exam"
+          onClose={() => { setExamModalOpen(false); setEditingExam(null); }}
+          title={editingExam ? 'Edit Exam' : 'Add School Exam'}
         >
-          <form onSubmit={handleCreateExam} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <form onSubmit={handleSaveExam} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label className="form-label">Exam Name *</label>
               <input
@@ -1523,31 +1753,43 @@ export const MarksPage = () => {
                 onChange={(e) => setExamForm({ ...examForm, totalMarks: Number(e.target.value) })}
               />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setExamModalOpen(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary">Create Exam</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => { setExamModalOpen(false); setEditingExam(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={savingExam}
+              >
+                {savingExam ? (editingExam ? 'Updating...' : 'Creating...') : (editingExam ? 'Update Exam' : 'Create Exam')}
+              </button>
             </div>
           </form>
         </Modal>
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: ADD SUBJECT (Admin) */}
+      {/* MODAL: ADD / EDIT SUBJECT (Admin) */}
       {/* ========================================================================= */}
       {subjectModalOpen && (
         <Modal
           isOpen={subjectModalOpen}
-          onClose={() => setSubjectModalOpen(false)}
-          title="Add School Subject"
+          onClose={() => { setSubjectModalOpen(false); setEditingSubject(null); }}
+          title={editingSubject ? 'Edit Subject' : 'Add School Subject'}
         >
-          <form onSubmit={handleCreateSubject} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <form onSubmit={handleSaveSubject} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
               <label className="form-label">Subject Name *</label>
               <input
                 type="text"
                 className="form-control"
                 required
-                placeholder="e.g., Tamil, Physics, Computer Science"
+                placeholder="e.g., Mathematics, Physics, Computer Science"
                 value={subjectForm.name}
                 onChange={(e) => setSubjectForm({ ...subjectForm, name: e.target.value })}
               />
@@ -1558,18 +1800,81 @@ export const MarksPage = () => {
                 type="text"
                 className="form-control"
                 required
-                placeholder="e.g., TAM, PHY-101"
+                placeholder="e.g., MATH-101, PHY-101, TAM"
                 value={subjectForm.code}
                 onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value })}
               />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setSubjectModalOpen(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary">Create Subject</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => { setSubjectModalOpen(false); setEditingSubject(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={savingSubject}
+              >
+                {savingSubject ? (editingSubject ? 'Updating...' : 'Creating...') : (editingSubject ? 'Update Subject' : 'Create Subject')}
+              </button>
             </div>
           </form>
         </Modal>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: CONFIRM DELETE (Subject or Exam) */}
+      {/* ========================================================================= */}
+      {deleteConfirmModal.isOpen && (
+        <Modal
+          isOpen={deleteConfirmModal.isOpen}
+          onClose={() => setDeleteConfirmModal({ isOpen: false, type: null, item: null, title: '', message: '' })}
+          title={deleteConfirmModal.title}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem', borderRadius: '50%', color: '#ef4444' }}>
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                  {deleteConfirmModal.message}
+                </p>
+                {deleteConfirmModal.item && (
+                  <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    Item: <strong>{deleteConfirmModal.item.name}</strong> {deleteConfirmModal.item.code ? `(${deleteConfirmModal.item.code})` : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={deletingItem}
+                onClick={() => setDeleteConfirmModal({ isOpen: false, type: null, item: null, title: '', message: '' })}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn"
+                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                disabled={deletingItem}
+                onClick={handleConfirmDelete}
+              >
+                <Trash2 size={15} />
+                {deletingItem ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
     </div>
   );
 };

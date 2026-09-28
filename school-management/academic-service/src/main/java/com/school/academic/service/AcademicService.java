@@ -13,9 +13,13 @@ import com.school.academic.repository.SubjectRepository;
 import com.school.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+
 
 /**
  * Service layer for academic operations: classes, subjects, exams, marks.
@@ -76,17 +80,63 @@ public class AcademicService {
         return subjectRepository.findByClassId(classId);
     }
 
+    @Transactional
     public Subject createSubject(Subject subject) {
+        if (subject.getName() == null || subject.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Subject name is required.");
+        }
+        String trimmedName = subject.getName().trim();
+        String trimmedCode = subject.getCode() != null ? subject.getCode().trim() : null;
+
+        if (subjectRepository.existsByNameIgnoreCaseAndIdNot(trimmedName, null)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Subject name '" + trimmedName + "' already exists.");
+        }
+        if (trimmedCode != null && !trimmedCode.isEmpty() && subjectRepository.existsByCodeIgnoreCaseAndIdNot(trimmedCode, null)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Subject code '" + trimmedCode + "' already exists.");
+        }
+
+        subject.setName(trimmedName);
+        subject.setCode(trimmedCode);
         return subjectRepository.save(subject);
     }
 
+    @Transactional
     public Subject updateSubject(Long id, Subject updated) {
         Subject existing = getSubjectById(id);
-        existing.setName(updated.getName());
-        existing.setCode(updated.getCode());
-        existing.setClassId(updated.getClassId());
-        existing.setDescription(updated.getDescription());
-        return subjectRepository.save(existing);
+        if (updated.getName() == null || updated.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Subject name is required.");
+        }
+        String trimmedName = updated.getName().trim();
+        String trimmedCode = updated.getCode() != null ? updated.getCode().trim() : null;
+
+        if (subjectRepository.existsByNameIgnoreCaseAndIdNot(trimmedName, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Subject name '" + trimmedName + "' already exists.");
+        }
+        if (trimmedCode != null && !trimmedCode.isEmpty() && subjectRepository.existsByCodeIgnoreCaseAndIdNot(trimmedCode, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Subject code '" + trimmedCode + "' already exists.");
+        }
+
+        existing.setName(trimmedName);
+        existing.setCode(trimmedCode);
+        if (updated.getClassId() != null) {
+            existing.setClassId(updated.getClassId());
+        }
+        if (updated.getDescription() != null) {
+            existing.setDescription(updated.getDescription());
+        }
+        Subject saved = subjectRepository.save(existing);
+        markRepository.updateSubjectNameForMarks(id, trimmedName);
+        return saved;
+    }
+
+    @Transactional
+    public void deleteSubject(Long id) {
+        Subject existing = getSubjectById(id);
+        if (markRepository.existsBySubjectIdOrSubjectName(id, existing.getName())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This subject cannot be deleted because marks already exist for this subject.");
+        }
+        subjectRepository.delete(existing);
     }
 
     // ---- Exam ----
@@ -100,9 +150,63 @@ public class AcademicService {
                 .orElseThrow(() -> new ResourceNotFoundException("Exam", "id", id));
     }
 
+    @Transactional
     public Exam createExam(Exam exam) {
+        if (exam.getName() == null || exam.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Exam name is required.");
+        }
+        String trimmedName = exam.getName().trim();
+        if (examRepository.existsByNameIgnoreCaseAndIdNot(trimmedName, null)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Exam name '" + trimmedName + "' already exists.");
+        }
+
+        exam.setName(trimmedName);
+        if (exam.getTotalMarks() == null || exam.getTotalMarks() <= 0) {
+            exam.setTotalMarks(100);
+        }
         return examRepository.save(exam);
     }
+
+    @Transactional
+    public Exam updateExam(Long id, Exam updated) {
+        Exam existing = getExamById(id);
+        if (updated.getName() == null || updated.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Exam name is required.");
+        }
+        String trimmedName = updated.getName().trim();
+        if (examRepository.existsByNameIgnoreCaseAndIdNot(trimmedName, id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Exam name '" + trimmedName + "' already exists.");
+        }
+
+        existing.setName(trimmedName);
+        if (updated.getExamDate() != null) {
+            existing.setExamDate(updated.getExamDate());
+        }
+        if (updated.getTotalMarks() != null && updated.getTotalMarks() > 0) {
+            existing.setTotalMarks(updated.getTotalMarks());
+        }
+        if (updated.getClassId() != null) {
+            existing.setClassId(updated.getClassId());
+        }
+        if (updated.getSubjectId() != null) {
+            existing.setSubjectId(updated.getSubjectId());
+        }
+
+        Exam saved = examRepository.save(existing);
+        markRepository.updateExamNameForMarks(id, trimmedName);
+        return saved;
+    }
+
+    @Transactional
+    public void deleteExam(Long id) {
+        Exam existing = getExamById(id);
+        if (markRepository.existsByExamIdOrExamName(id, existing.getName())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This exam cannot be deleted because marks already exist for this exam.");
+        }
+        examRepository.delete(existing);
+    }
+
 
     // ---- Mark ----
 
