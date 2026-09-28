@@ -259,10 +259,15 @@ public class StudentService {
         }
 
         String cleanPhone = phoneNumber.trim();
-        List<Student> students = studentRepository.findAllByPhoneNumber(cleanPhone);
+        String digitsOnly = cleanPhone.replaceAll("[^0-9]", "");
+        String stripped = digitsOnly.length() >= 10 ? digitsOnly.substring(digitsOnly.length() - 10) : digitsOnly;
+        String zeroPrefixed = "0" + stripped;
+
+        List<Student> students = studentRepository.findByAnyPhoneNumber(cleanPhone, stripped, zeroPrefixed);
         if (students.isEmpty()) {
             throw new BadRequestException("No student account found with this phone number");
         }
+
 
         for (Student s : students) {
             if (s.getPasswordHash() != null && !s.getPasswordHash().isBlank()) {

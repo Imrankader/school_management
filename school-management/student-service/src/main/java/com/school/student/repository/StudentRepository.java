@@ -24,6 +24,18 @@ public interface StudentRepository extends JpaRepository<Student, Long>, JpaSpec
 
     Optional<Student> findFirstByPhoneNumber(String phoneNumber);
 
+    @org.springframework.data.jpa.repository.Query("SELECT s FROM Student s WHERE " +
+           "(s.phoneNumber IS NOT NULL AND (s.phoneNumber = :phone OR s.phoneNumber = :stripped OR s.phoneNumber = :zeroPrefixed)) OR " +
+           "(s.contactNumber IS NOT NULL AND (s.contactNumber = :phone OR s.contactNumber = :stripped OR s.contactNumber = :zeroPrefixed)) OR " +
+           "(s.fatherMobileNumber IS NOT NULL AND (s.fatherMobileNumber = :phone OR s.fatherMobileNumber = :stripped OR s.fatherMobileNumber = :zeroPrefixed)) OR " +
+           "(s.motherMobileNumber IS NOT NULL AND (s.motherMobileNumber = :phone OR s.motherMobileNumber = :stripped OR s.motherMobileNumber = :zeroPrefixed)) OR " +
+           "(s.guardianMobileNumber IS NOT NULL AND (s.guardianMobileNumber = :phone OR s.guardianMobileNumber = :stripped OR s.guardianMobileNumber = :zeroPrefixed))")
+    List<Student> findByAnyPhoneNumber(
+            @org.springframework.data.repository.query.Param("phone") String phone,
+            @org.springframework.data.repository.query.Param("stripped") String stripped,
+            @org.springframework.data.repository.query.Param("zeroPrefixed") String zeroPrefixed);
+
+
     List<Student> findByClassName(String className);
 
     List<Student> findByClassNameAndIsActiveTrue(String className);

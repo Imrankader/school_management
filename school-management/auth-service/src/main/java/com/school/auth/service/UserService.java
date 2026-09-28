@@ -165,7 +165,7 @@ public class UserService {
 
         // Find or create parent user in auth-service users table so userId is consistent
         User user = userRepository.findByEmail(phone)
-                .or(() -> userRepository.findByRoleAndStudentId(Role.PARENT, student.getStudentId()))
+                .or(() -> userRepository.findFirstByRoleAndStudentId(Role.PARENT, student.getStudentId()))
                 .orElseGet(() -> {
                     User newUser = User.builder()
                             .name(student.getStudentName() != null ? student.getStudentName() + " (Parent)" : "Parent")
@@ -187,7 +187,7 @@ public class UserService {
             user.setName(student.getStudentName() + " (Parent)");
             changed = true;
         }
-        if (!phone.equals(user.getEmail())) {
+        if (!phone.equals(user.getEmail()) && !userRepository.existsByEmail(phone)) {
             user.setEmail(phone);
             changed = true;
         }
@@ -197,6 +197,7 @@ public class UserService {
         if (changed) {
             user = userRepository.save(user);
         }
+
 
         log.info("Parent logged in successfully: phone={}, studentId={}", phone, student.getStudentId());
         String token = jwtUtil.generateToken(
