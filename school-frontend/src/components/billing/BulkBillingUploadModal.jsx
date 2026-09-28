@@ -140,12 +140,6 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
     }
   };
 
-<<<<<<< HEAD
-  const handleDownloadTemplate = async (classToDownload) => {
-    const targetClass = classToDownload || selectedClass || 'ALL';
-    try {
-      const response = await feeService.downloadTemplate(targetClass);
-=======
   const isAllClasses = !selectedClass || selectedClass === 'ALL' || selectedClass === 'All Classes' || selectedClass === '';
   const targetClassParam = isAllClasses ? 'ALL' : selectedClass;
   const displayClassName = isAllClasses ? 'All Classes' : selectedClass;
@@ -153,35 +147,19 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
   const handleDownloadTemplate = async () => {
     try {
       const response = await feeService.downloadTemplate(targetClassParam);
->>>>>>> 2703f6f (student and billing chnages)
       const blob = new Blob([response.data || response], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-<<<<<<< HEAD
-      const filename = targetClass && targetClass !== 'ALL' && targetClass !== 'All Classes'
-        ? `${targetClass.replace(/\s+/g, '_')}_Billing_Template.xlsx`
-        : 'Multi_Class_Billing_Template.xlsx';
-=======
       const filename = isAllClasses ? 'All_Classes_Billing_Template.xlsx' : `${selectedClass.replace(/\s+/g, '_')}_Billing_Template.xlsx`;
->>>>>>> 2703f6f (student and billing chnages)
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
       window.URL.revokeObjectURL(url);
-<<<<<<< HEAD
-      addToast(
-        targetClass && targetClass !== 'ALL' && targetClass !== 'All Classes'
-          ? `Downloaded billing template for ${targetClass}`
-          : 'Downloaded multi-class billing template',
-        'success'
-      );
-=======
       addToast(isAllClasses ? 'Downloaded billing template for all active students' : `Downloaded billing template for ${selectedClass}`, 'success');
->>>>>>> 2703f6f (student and billing chnages)
     } catch (err) {
       console.error('Failed to download billing template', err);
       addToast('Failed to download billing template file', 'error');
@@ -201,11 +179,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
       });
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-<<<<<<< HEAD
-      const filename = `billing_bulk_upload_errors_${timestamp}.xlsx`;
-=======
       const filename = `billing_bulk_upload_errors_${displayClassName.replace(/\s+/g, '_')}_${timestamp}.xlsx`;
->>>>>>> 2703f6f (student and billing chnages)
 
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -224,21 +198,13 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
     if (!file || fileProcessing || !fileProcessingSuccessful || loading) return;
 
     setLoading(true);
-<<<<<<< HEAD
-    setLoadingStep('Validating multi-class student billing records...');
-=======
     setLoadingStep(`Validating and uploading billing for ${displayClassName}...`);
->>>>>>> 2703f6f (student and billing chnages)
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-<<<<<<< HEAD
-      const res = await feeService.bulkUpload(selectedClass || 'ALL', formData);
-=======
       const res = await feeService.bulkUpload(targetClassParam, formData);
->>>>>>> 2703f6f (student and billing chnages)
       const uploadResult = res.data || res;
       setResult(uploadResult);
       setLoading(false);
@@ -329,23 +295,11 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
               <h3 className="card-title" style={{ margin: 0, fontSize: '1.15rem' }}>
                 Bulk Billing Upload {isAllClasses ? '— All Classes' : `— ${selectedClass}`}
               </h3>
-<<<<<<< HEAD
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', marginTop: '2px' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '0.1rem 0.45rem', borderRadius: '4px', background: '#ecfdf5', color: '#059669', fontWeight: 600, fontSize: '0.725rem' }}>
-                  Multiple Classes Supported
-                </span>
-                <span>• Class is determined from the Excel file</span>
-                {selectedClass && selectedClass !== 'ALL' && selectedClass !== 'All Classes' && (
-                  <span style={{ color: 'var(--text-muted)' }}>
-                    (Selected Class: <strong style={{ color: 'var(--primary)' }}>{selectedClass}</strong>)
-                  </span>
-=======
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 {isAllClasses ? (
                   <>Scope: <strong style={{ color: 'var(--primary)' }}>All Active Students across All Classes</strong></>
                 ) : (
                   <>Target Class: <strong style={{ color: 'var(--primary)' }}>{selectedClass}</strong> (Active Students Only)</>
->>>>>>> 2703f6f (student and billing chnages)
                 )}
               </div>
             </div>
@@ -354,7 +308,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <button
               type="button"
-              onClick={() => handleDownloadTemplate(selectedClass || 'ALL')}
+              onClick={handleDownloadTemplate}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -370,11 +324,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
                 transition: 'all 0.2s',
                 boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)',
               }}
-<<<<<<< HEAD
-              title="Download pre-filled Excel template pre-populated with active students"
-=======
               title={isAllClasses ? 'Download pre-filled Excel template for all active students across all classes' : `Download pre-filled Excel template for active ${selectedClass} students`}
->>>>>>> 2703f6f (student and billing chnages)
             >
               <FileSpreadsheet size={16} /> Download Template
             </button>
