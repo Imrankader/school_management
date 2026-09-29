@@ -140,10 +140,13 @@ public class UserService {
                 user.getEmail(),
                 user.getRole().name(),
                 user.getId(),
-                user.getStudentId()
+                user.getStudentId(),
+                user.getAssignedClass(),
+                user.getAssignedSection()
         );
         return AuthResponse.of(token, user.getId(), user.getName(),
-                user.getEmail(), user.getRole(), user.getStudentId());
+                user.getEmail(), user.getRole(), user.getStudentId(),
+                user.getAssignedClass(), user.getAssignedSection());
     }
 
     /**

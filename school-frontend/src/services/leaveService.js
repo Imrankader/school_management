@@ -7,9 +7,15 @@ export const leaveService = {
     return response.data;
   },
 
-  // Admin/Teacher get all submitted leave records (read-only)
+  // Admin get all submitted leave records (read-only)
   getAll: async () => {
     const response = await api.get('/api/attendance/leave');
+    return response.data;
+  },
+
+  // Teacher get leave records for assigned class/section (backend-filtered)
+  getTeacherLeaves: async () => {
+    const response = await api.get('/api/attendance/leave/teacher');
     return response.data;
   },
 

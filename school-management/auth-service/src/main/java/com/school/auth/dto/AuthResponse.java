@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 /**
  * Response DTO returned after successful authentication.
  * studentId is populated for PARENT role users only.
+ * assignedClass and assignedSection are populated for TEACHER role users.
  */
 @Data
 @Builder
@@ -29,6 +30,12 @@ public class AuthResponse {
      */
     private Long studentId;
 
+    /**
+     * For TEACHER role: The assigned class and section.
+     */
+    private String assignedClass;
+    private String assignedSection;
+
     public static AuthResponse of(String token, Long userId, String name, String email, Role role, Long studentId) {
         return AuthResponse.builder()
                 .token(token)
@@ -38,6 +45,20 @@ public class AuthResponse {
                 .email(email)
                 .role(role)
                 .studentId(studentId)
+                .build();
+    }
+
+    public static AuthResponse of(String token, Long userId, String name, String email, Role role, Long studentId, String assignedClass, String assignedSection) {
+        return AuthResponse.builder()
+                .token(token)
+                .type("Bearer")
+                .userId(userId)
+                .name(name)
+                .email(email)
+                .role(role)
+                .studentId(studentId)
+                .assignedClass(assignedClass)
+                .assignedSection(assignedSection)
                 .build();
     }
 }

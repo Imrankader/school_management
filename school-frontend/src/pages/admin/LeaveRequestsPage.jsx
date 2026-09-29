@@ -127,21 +127,23 @@ export const LeaveRequestsPage = () => {
 
       {/* Leave Table */}
       <div className="table-container">
-        <table className="table">
+        <table className="table" style={{ width: '100%', minWidth: '780px' }}>
           <thead>
             <tr>
-              <th style={{ width: '80px' }}>Record #</th>
-              <th>Student Details</th>
+              <th style={{ width: '90px' }}>Record #</th>
+              <th>Student Name</th>
+              <th>Admission No</th>
+              <th>Class & Section</th>
               <th>Leave Date</th>
               <th>Reason</th>
               <th>Submitted On</th>
-              <th style={{ textAlign: 'center', width: '110px' }}>Status</th>
+              <th style={{ textAlign: 'center', width: '120px' }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
                   <FileText size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
                   <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
                     {loading ? 'Loading leave records...' : searchTerm ? 'No records match your search.' : 'No leave records submitted yet.'}
@@ -151,33 +153,39 @@ export const LeaveRequestsPage = () => {
             ) : (
               filtered.map((req) => {
                 const stu = studentsMap[req.studentId];
+                const recId = req.recordId || req.id;
+                const studentName = req.studentName || stu?.name || `Student #${req.studentId}`;
+                const admissionNo = req.admissionNumber || stu?.admissionNumber || '—';
+                const rawClass = req.className || stu?.className;
+                const section = req.section || stu?.section || '';
+                const classDisplay = rawClass
+                  ? `${toDisplayClassName(rawClass)}${section ? ` (${section})` : ''}`
+                  : '—';
+                const leaveDate = req.leaveDate || req.startDate || '—';
+                const submittedOn = req.submittedAt || req.createdAt ? formatDate(req.submittedAt || req.createdAt) : '—';
+
                 return (
-                  <tr key={req.id}>
-                    <td><strong>#{req.id}</strong></td>
+                  <tr key={recId}>
+                    <td><strong>#{recId}</strong></td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {studentName}
+                    </td>
+                    <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                      {admissionNo}
+                    </td>
                     <td>
-                      {stu ? (
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {stu.name}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            {toDisplayClassName(stu.className)} {stu.section ? `(${stu.section})` : ''} &bull; Adm: {stu.admissionNumber || `#${stu.id}`}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="badge badge-secondary" style={{ fontWeight: 600 }}>
-                          Student #{req.studentId}
-                        </span>
-                      )}
+                      <span className="badge badge-primary">
+                        {classDisplay}
+                      </span>
                     </td>
                     <td style={{ fontWeight: 600 }}>
-                      {req.startDate}
+                      {leaveDate}
                     </td>
-                    <td style={{ maxWidth: '340px', fontSize: '0.875rem' }}>
+                    <td style={{ maxWidth: '300px', fontSize: '0.875rem' }}>
                       {req.reason || '—'}
                     </td>
                     <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                      {req.createdAt ? formatDate(req.createdAt) : '—'}
+                      {submittedOn}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <span className="badge badge-primary">

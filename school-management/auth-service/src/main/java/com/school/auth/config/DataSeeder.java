@@ -50,6 +50,10 @@ public class DataSeeder implements CommandLineRunner {
         user.setName(name);
         user.setPassword(passwordEncoder.encode(rawPassword));
         user.setRole(role);
+        if (role == Role.TEACHER && (user.getAssignedClass() == null || user.getAssignedClass().isBlank())) {
+            user.setAssignedClass("Class 10");
+            user.setAssignedSection("A");
+        }
         userRepository.save(user);
     }
 }

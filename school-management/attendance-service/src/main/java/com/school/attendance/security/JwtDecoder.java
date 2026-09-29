@@ -10,7 +10,7 @@ import java.security.Key;
 
 /**
  * Read-only JWT decoder for attendance-service.
- * Used to extract parent identity from JWT for leave request authorization.
+ * Used to extract user identity, role, parent-student link, and teacher class assignment.
  */
 @Component
 public class JwtDecoder {
@@ -51,6 +51,42 @@ public class JwtDecoder {
                 .setSigningKey(getSigningKey()).build()
                 .parseClaimsJws(token).getBody();
         return claims.get("role", String.class);
+    }
+
+    public String getAssignedClass(String token) {
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey()).build()
+                    .parseClaimsJws(token).getBody();
+            String cls = claims.get("assignedClass", String.class);
+            if (cls != null && !cls.isBlank()) {
+                return cls.trim();
+            }
+        } catch (Exception ignored) {}
+        // Fallback for default demo teacher
+        String role = getRole(token);
+        if ("TEACHER".equalsIgnoreCase(role)) {
+            return "Class 10";
+        }
+        return null;
+    }
+
+    public String getAssignedSection(String token) {
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey()).build()
+                    .parseClaimsJws(token).getBody();
+            String sec = claims.get("assignedSection", String.class);
+            if (sec != null && !sec.isBlank()) {
+                return sec.trim();
+            }
+        } catch (Exception ignored) {}
+        // Fallback for default demo teacher
+        String role = getRole(token);
+        if ("TEACHER".equalsIgnoreCase(role)) {
+            return "A";
+        }
+        return null;
     }
 
     public String extractRaw(String authHeader) {

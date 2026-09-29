@@ -1,6 +1,8 @@
 package com.school.attendance.service;
 
 import com.school.attendance.dto.AttendanceDTO;
+import com.school.attendance.dto.LeaveRecordDTO;
+import com.school.attendance.dto.StudentInfoDTO;
 import com.school.attendance.entity.Attendance;
 import com.school.attendance.entity.Holiday;
 import com.school.attendance.entity.LeaveReason;
@@ -15,8 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Business logic for Attendance, Holidays, Leave Requests, and Leave Reasons.
@@ -30,6 +32,7 @@ public class AttendanceService {
     private final HolidayRepository holidayRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final LeaveReasonRepository leaveReasonRepository;
+    private final StudentServiceClient studentServiceClient;
 
     // ---- Attendance ----
 
@@ -112,16 +115,95 @@ public class AttendanceService {
     // ---- Leave Requests (no approval workflow) ----
 
     /**
-     * Parent submits leave. Status is set to SUBMITTED immediately.
-     * No approval required.
+     * Parent submits single-day leave.
+     * Status is set to RECORDED directly — no approval workflow.
      */
-    public LeaveRequest submitLeave(Long studentId, Long parentId, LeaveRequest request) {
+    public LeaveRecordDTO submitLeave(Long studentId, Long parentId, LeaveRequest request) {
         request.setStudentId(studentId);
         request.setParentId(parentId);
-        request.setStatus("SUBMITTED");
+        request.setStatus("RECORDED");
+        request.setEndDate(null); // Single-day leave requirement: no end date
+
+        LocalDate effectiveDate = request.getLeaveDate() != null ? request.getLeaveDate() : request.getStartDate();
+        if (effectiveDate == null) {
+            effectiveDate = LocalDate.now();
+        }
+        request.setStartDate(effectiveDate);
+
         LeaveRequest saved = leaveRequestRepository.save(request);
-        log.info("Leave submitted for student {} by parent {} — recorded directly", studentId, parentId);
-        return saved;
+        log.info("Leave submitted for student {} by parent {} on {} — recorded directly as RECORDED",
+                studentId, parentId, effectiveDate);
+
+        StudentInfoDTO student = studentServiceClient.getStudentById(studentId);
+        return toLeaveRecordDTO(saved, student);
+    }
+
+    /**
+     * Teacher view: Only returns leave records for students belonging to the teacher's
+     * assigned class and section. Backend-enforced authorization.
+     */
+    public List<LeaveRecordDTO> getTeacherLeaveRecords(String teacherClass, String teacherSection) {
+        Map<Long, StudentInfoDTO> studentMap = buildStudentMap();
+        List<LeaveRequest> allRequests = leaveRequestRepository.findAllByOrderByCreatedAtDesc();
+
+        return allRequests.stream()
+                .filter(lr -> {
+                    StudentInfoDTO student = studentMap.get(lr.getStudentId());
+                    if (student == null) {
+                        student = studentServiceClient.getStudentById(lr.getStudentId());
+                        if (student != null) {
+                            studentMap.put(student.getId(), student);
+                        }
+                    }
+                    if (student == null) {
+                        return false;
+                    }
+                    return isClassAndSectionMatch(student.getClassName(), student.getSection(), teacherClass, teacherSection);
+                })
+                .map(lr -> toLeaveRecordDTO(lr, studentMap.get(lr.getStudentId())))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Admin view: Returns all school leave records enriched with student details.
+     */
+    public List<LeaveRecordDTO> getAllLeaveRecordsEnriched() {
+        Map<Long, StudentInfoDTO> studentMap = buildStudentMap();
+        List<LeaveRequest> allRequests = leaveRequestRepository.findAllByOrderByCreatedAtDesc();
+
+        return allRequests.stream()
+                .map(lr -> {
+                    StudentInfoDTO student = studentMap.get(lr.getStudentId());
+                    if (student == null) {
+                        student = studentServiceClient.getStudentById(lr.getStudentId());
+                        if (student != null) {
+                            studentMap.put(student.getId(), student);
+                        }
+                    }
+                    return toLeaveRecordDTO(lr, student);
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Parent view: Returns leaves submitted by this parent, enriched with student details.
+     */
+    public List<LeaveRecordDTO> getMyLeaveRecordsEnriched(Long parentId) {
+        Map<Long, StudentInfoDTO> studentMap = buildStudentMap();
+        List<LeaveRequest> requests = leaveRequestRepository.findByParentId(parentId);
+
+        return requests.stream()
+                .map(lr -> {
+                    StudentInfoDTO student = studentMap.get(lr.getStudentId());
+                    if (student == null) {
+                        student = studentServiceClient.getStudentById(lr.getStudentId());
+                        if (student != null) {
+                            studentMap.put(student.getId(), student);
+                        }
+                    }
+                    return toLeaveRecordDTO(lr, student);
+                })
+                .collect(Collectors.toList());
     }
 
     public List<LeaveRequest> getAllLeaveRequests() {
@@ -130,6 +212,111 @@ public class AttendanceService {
 
     public List<LeaveRequest> getLeaveByParent(Long parentId) {
         return leaveRequestRepository.findByParentId(parentId);
+    }
+
+    private Map<Long, StudentInfoDTO> buildStudentMap() {
+        try {
+            List<StudentInfoDTO> allStudents = studentServiceClient.getAllStudents();
+            Map<Long, StudentInfoDTO> map = new HashMap<>();
+            for (StudentInfoDTO s : allStudents) {
+                if (s.getId() != null) {
+                    map.put(s.getId(), s);
+                }
+            }
+            return map;
+        } catch (Exception e) {
+            log.error("Failed to build student map: {}", e.getMessage());
+            return new HashMap<>();
+        }
+    }
+
+    private LeaveRecordDTO toLeaveRecordDTO(LeaveRequest lr, StudentInfoDTO stu) {
+        String studentName = (stu != null && stu.getName() != null && !stu.getName().isBlank())
+                ? stu.getName()
+                : "Student #" + lr.getStudentId();
+
+        String admissionNumber = (stu != null && stu.getAdmissionNumber() != null && !stu.getAdmissionNumber().isBlank())
+                ? stu.getAdmissionNumber()
+                : "—";
+
+        String className = (stu != null && stu.getClassName() != null && !stu.getClassName().isBlank())
+                ? stu.getClassName()
+                : "—";
+
+        String section = (stu != null && stu.getSection() != null)
+                ? stu.getSection()
+                : "";
+
+        LocalDate leaveDate = lr.getStartDate();
+
+        return LeaveRecordDTO.builder()
+                .recordId(lr.getId())
+                .id(lr.getId())
+                .studentId(lr.getStudentId())
+                .studentName(studentName)
+                .admissionNumber(admissionNumber)
+                .className(className)
+                .section(section)
+                .leaveDate(leaveDate)
+                .startDate(leaveDate)
+                .endDate(lr.getEndDate() != null ? lr.getEndDate() : leaveDate)
+                .reason(lr.getReason())
+                .submittedAt(lr.getCreatedAt())
+                .createdAt(lr.getCreatedAt())
+                .status("RECORDED")
+                .build();
+    }
+
+    /**
+     * Checks if student's class and section match the teacher's assigned class and section.
+     * Supports variations like "Class 10" == "10" == "Class X" == "X".
+     */
+    public static boolean isClassAndSectionMatch(String studentClass, String studentSection, String teacherClass, String teacherSection) {
+        if (teacherClass == null || teacherClass.isBlank()) {
+            return true; // No class restriction
+        }
+        if (studentClass == null || studentClass.isBlank()) {
+            return false;
+        }
+
+        String normStudent = normalizeClass(studentClass);
+        String normTeacher = normalizeClass(teacherClass);
+
+        if (!normStudent.equalsIgnoreCase(normTeacher)) {
+            return false;
+        }
+
+        if (teacherSection != null && !teacherSection.isBlank()) {
+            if (studentSection == null || studentSection.isBlank()) {
+                return false;
+            }
+            return teacherSection.trim().equalsIgnoreCase(studentSection.trim());
+        }
+
+        return true;
+    }
+
+    private static String normalizeClass(String raw) {
+        if (raw == null) return "";
+        String s = raw.trim().toUpperCase();
+        // Remove prefixes like "CLASS", "GRADE", "STD", "STANDARD"
+        s = s.replaceAll("^(CLASS|GRADE|STANDARD|STD)\\s*", "").trim();
+        // Map roman numerals to numbers
+        switch (s) {
+            case "I": return "1";
+            case "II": return "2";
+            case "III": return "3";
+            case "IV": return "4";
+            case "V": return "5";
+            case "VI": return "6";
+            case "VII": return "7";
+            case "VIII": return "8";
+            case "IX": return "9";
+            case "X": return "10";
+            case "XI": return "11";
+            case "XII": return "12";
+            default: return s;
+        }
     }
 
     // ---- Leave Reasons (Admin-managed) ----
@@ -167,6 +354,17 @@ public class AttendanceService {
         existing.setActive(false);
         leaveReasonRepository.save(existing);
         log.info("Leave reason id={} deactivated (soft-deleted)", id);
+    }
+
+    /**
+     * Hard-delete a leave reason if required.
+     */
+    public void deleteLeaveReason(Long id) {
+        if (!leaveReasonRepository.existsById(id)) {
+            throw new ResourceNotFoundException("LeaveReason", "id", id);
+        }
+        leaveReasonRepository.deleteById(id);
+        log.info("Leave reason id={} hard deleted", id);
     }
 
     /**

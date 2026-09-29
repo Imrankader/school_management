@@ -32,6 +32,13 @@ public class JwtUtil {
      * studentId is null for ADMIN/TEACHER users.
      */
     public String generateToken(String email, String role, Long userId, Long studentId) {
+        return generateToken(email, role, userId, studentId, null, null);
+    }
+
+    /**
+     * Generate a JWT token embedding email, role, userId, studentId, assignedClass, assignedSection.
+     */
+    public String generateToken(String email, String role, Long userId, Long studentId, String assignedClass, String assignedSection) {
         var builder = Jwts.builder()
                 .setSubject(email)
                 .claim("role", role)
@@ -41,6 +48,12 @@ public class JwtUtil {
 
         if (studentId != null) {
             builder.claim("studentId", studentId);
+        }
+        if (assignedClass != null && !assignedClass.isBlank()) {
+            builder.claim("assignedClass", assignedClass);
+        }
+        if (assignedSection != null && !assignedSection.isBlank()) {
+            builder.claim("assignedSection", assignedSection);
         }
 
         return builder.signWith(getSigningKey(), SignatureAlgorithm.HS256).compact();

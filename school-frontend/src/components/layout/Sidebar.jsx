@@ -130,6 +130,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
               <span>Dashboard & Homework</span>
             </NavLink>
             <NavLink
+              to="/teacher/leave"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <FileText size={18} />
+              <span>Leave Records</span>
+            </NavLink>
+            <NavLink
               to="/teacher/marks"
               onClick={handleLinkClick}
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}

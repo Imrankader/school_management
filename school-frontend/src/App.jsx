@@ -25,6 +25,7 @@ import { NotificationsPage } from './pages/admin/NotificationsPage';
 
 // Teacher & Parent Pages
 import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
+import { TeacherLeavePage } from './pages/teacher/TeacherLeavePage';
 import { ParentDashboard } from './pages/parent/ParentDashboard';
 
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -99,6 +100,7 @@ export const App = () => {
                 }
               >
                 <Route index element={<TeacherDashboard />} />
+                <Route path="leave" element={<TeacherLeavePage />} />
                 <Route path="marks" element={<MarksPage />} />
               </Route>
 

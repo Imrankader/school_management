@@ -7,8 +7,7 @@ import lombok.*;
 /**
  * User entity representing system users (Admin, Teacher, Parent).
  * For PARENT role, studentId holds the ID of the student in student-service.
- * This is intentionally a plain Long (not a JPA FK) because auth-service and
- * student-service are separate microservices with separate databases.
+ * For TEACHER role, assignedClass and assignedSection indicate the teacher's class assignment.
  */
 @Entity
 @Table(name = "users")
@@ -38,8 +37,19 @@ public class User {
     /**
      * For PARENT role only: the ID of the student (in student-service) this
      * parent is assigned to. Null for ADMIN and TEACHER users.
-     * Not a JPA foreign key — just a cross-service reference by ID.
      */
     @Column(name = "student_id")
     private Long studentId;
+
+    /**
+     * For TEACHER role: The assigned class (e.g. "Class 10").
+     */
+    @Column(name = "assigned_class")
+    private String assignedClass;
+
+    /**
+     * For TEACHER role: The assigned section (e.g. "A").
+     */
+    @Column(name = "assigned_section")
+    private String assignedSection;
 }

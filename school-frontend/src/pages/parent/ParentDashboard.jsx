@@ -121,10 +121,14 @@ export const ParentDashboard = () => {
 
     setSubmittingLeave(true);
     try {
-      const payload = { startDate: leaveForm.startDate, reason: reasonText };
+      const payload = {
+        startDate: leaveForm.startDate,
+        leaveDate: leaveForm.startDate,
+        reason: reasonText,
+      };
       const res = await leaveService.submit(payload);
       if (res.success) {
-        addToast('Leave submitted successfully!', 'success');
+        addToast('Leave recorded successfully.', 'success');
         setLeaveForm({ startDate: '', selectedReasonId: '', customReason: '' });
         const lvRes = await leaveService.getMyLeave();
         if (lvRes.success && lvRes.data) setLeaveRequests(lvRes.data);
@@ -598,7 +602,7 @@ export const ParentDashboard = () => {
 
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">
-                      Reason for Absence *
+                      Reason *
                     </label>
                     <select
                       className="form-select"
@@ -606,13 +610,13 @@ export const ParentDashboard = () => {
                       onChange={(e) => setLeaveForm({ ...leaveForm, selectedReasonId: e.target.value })}
                       required
                     >
-                      <option value="">-- Select Predefined Reason --</option>
+                      <option value="">Select Reason</option>
                       {leaveReasons.map((r) => (
                         <option key={r.id} value={r.id}>
                           {r.englishReason} / {r.tamilMeaning}
                         </option>
                       ))}
-                      <option value="OTHER">Other Reason (Specify)</option>
+                      <option value="OTHER">Other / மற்றவை</option>
                     </select>
                   </div>
                 </div>
@@ -620,12 +624,12 @@ export const ParentDashboard = () => {
                 {leaveForm.selectedReasonId === 'OTHER' && (
                   <div className="form-group" style={{ marginBottom: '1rem' }}>
                     <label className="form-label">
-                      Custom Reason Details *
+                      Enter your reason *
                     </label>
                     <textarea
                       className="form-textarea"
                       rows={2}
-                      placeholder="Please specify the reason for student absence..."
+                      placeholder="Enter your reason"
                       value={leaveForm.customReason}
                       onChange={(e) => setLeaveForm({ ...leaveForm, customReason: e.target.value })}
                       required
@@ -640,7 +644,7 @@ export const ParentDashboard = () => {
                     disabled={submittingLeave}
                   >
                     <Send size={14} />
-                    <span>{submittingLeave ? 'Submitting Notice...' : 'Submit Leave Notice'}</span>
+                    <span>{submittingLeave ? 'Submitting Leave...' : 'Submit Leave Request'}</span>
                   </button>
                 </div>
               </form>
@@ -650,7 +654,7 @@ export const ParentDashboard = () => {
           {/* Submitted Leave History Table */}
           <div className="card">
             <div className="card-header">
-              <h3 className="card-title">Submitted Leave History</h3>
+              <h3 className="card-title">MY LEAVE RECORDS</h3>
               <span className="badge badge-secondary">{leaveRequests.length} Records</span>
             </div>
             <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>

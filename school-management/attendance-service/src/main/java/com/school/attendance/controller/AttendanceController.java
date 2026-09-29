@@ -1,6 +1,7 @@
 package com.school.attendance.controller;
 
 import com.school.attendance.dto.AttendanceDTO;
+import com.school.attendance.dto.LeaveRecordDTO;
 import com.school.attendance.entity.Holiday;
 import com.school.attendance.entity.LeaveReason;
 import com.school.attendance.entity.LeaveRequest;
@@ -120,12 +121,12 @@ public class AttendanceController {
     // ---- Leave Requests (no approval workflow) ----
 
     /**
-     * POST /api/attendance/leave — Parent submits leave for their child.
+     * POST /api/attendance/leave — Parent submits single-day leave for their child.
      * studentId is resolved from JWT — backend-enforced security.
-     * Leave is recorded directly as SUBMITTED. No approval required.
+     * Leave is recorded directly as RECORDED. No approval required.
      */
     @PostMapping("/leave")
-    public ResponseEntity<ApiResponse<LeaveRequest>> submitLeave(
+    public ResponseEntity<ApiResponse<LeaveRecordDTO>> submitLeave(
             @RequestBody LeaveRequest request,
             HttpServletRequest httpRequest) {
 
@@ -145,22 +146,62 @@ public class AttendanceController {
                     .body(ApiResponse.error("No student linked to your parent account. Contact admin."));
         }
 
-        LeaveRequest saved = attendanceService.submitLeave(studentId, parentId, request);
+        if (request.getLeaveDate() == null && request.getStartDate() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Leave date is required."));
+        }
+
+        if (request.getReason() == null || request.getReason().trim().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Leave reason is required."));
+        }
+
+        LeaveRecordDTO saved = attendanceService.submitLeave(studentId, parentId, request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Leave recorded successfully", saved));
     }
 
-    /** GET /api/attendance/leave — Admin/Teacher: all submitted leave records (read-only, no approval actions) */
-    @GetMapping("/leave")
-    public ResponseEntity<ApiResponse<List<LeaveRequest>>> getAllLeave() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.getAllLeaveRequests()));
+    /**
+     * GET /api/attendance/leave/teacher — Teacher view:
+     * Only returns leave records belonging to students from the teacher's assigned class/section.
+     * Access restriction enforced on backend via JWT claims.
+     */
+    @GetMapping("/leave/teacher")
+    public ResponseEntity<ApiResponse<List<LeaveRecordDTO>>> getTeacherLeave(HttpServletRequest httpRequest) {
+        String authHeader = httpRequest.getHeader("Authorization");
+        String token = jwtDecoder.extractRaw(authHeader);
+
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Invalid or missing token"));
+        }
+
+        String role = jwtDecoder.getRole(token);
+        if (!"TEACHER".equalsIgnoreCase(role) && !"ADMIN".equalsIgnoreCase(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Only teachers and administrators can view class leave records"));
+        }
+
+        String assignedClass = jwtDecoder.getAssignedClass(token);
+        String assignedSection = jwtDecoder.getAssignedSection(token);
+
+        List<LeaveRecordDTO> records = attendanceService.getTeacherLeaveRecords(assignedClass, assignedSection);
+        return ResponseEntity.ok(ApiResponse.success(records));
     }
 
     /**
-     * GET /api/attendance/leave/my — Parent sees only their own submitted requests.
+     * GET /api/attendance/leave — Admin view: all school leave records enriched with student details.
+     */
+    @GetMapping("/leave")
+    public ResponseEntity<ApiResponse<List<LeaveRecordDTO>>> getAllLeave() {
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.getAllLeaveRecordsEnriched()));
+    }
+
+    /**
+     * GET /api/attendance/leave/my — Parent sees only their own submitted records.
      */
     @GetMapping("/leave/my")
-    public ResponseEntity<ApiResponse<List<LeaveRequest>>> getMyLeave(HttpServletRequest httpRequest) {
+    public ResponseEntity<ApiResponse<List<LeaveRecordDTO>>> getMyLeave(HttpServletRequest httpRequest) {
         String authHeader = httpRequest.getHeader("Authorization");
         String token = jwtDecoder.extractRaw(authHeader);
 
@@ -170,7 +211,7 @@ public class AttendanceController {
         }
 
         Long parentId = jwtDecoder.getUserId(token);
-        List<LeaveRequest> requests = attendanceService.getLeaveByParent(parentId);
+        List<LeaveRecordDTO> requests = attendanceService.getMyLeaveRecordsEnriched(parentId);
         return ResponseEntity.ok(ApiResponse.success(requests));
     }
 

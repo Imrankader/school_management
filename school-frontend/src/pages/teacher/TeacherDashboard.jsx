@@ -43,6 +43,7 @@ export const TeacherDashboard = () => {
 
   // Leave Requests State
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [leaveSearch, setLeaveSearch] = useState('');
 
   // Notifications State
   const [notifications, setNotifications] = useState([]);
@@ -60,12 +61,15 @@ export const TeacherDashboard = () => {
       const [hwRes, holRes, lvRes] = await Promise.allSettled([
         homeworkService.getAll(),
         holidayService.getAll(),
-        leaveService.getAll(),
+        leaveService.getTeacherLeaves(),
       ]);
 
       if (hwRes.status === 'fulfilled' && hwRes.value?.data) setHomeworkList(hwRes.value.data);
       if (holRes.status === 'fulfilled' && holRes.value?.data) setHolidays(holRes.value.data);
-      if (lvRes.status === 'fulfilled' && lvRes.value?.data) setLeaveRequests(lvRes.value.data);
+      if (lvRes.status === 'fulfilled') {
+        const lvData = lvRes.value?.data || (Array.isArray(lvRes.value) ? lvRes.value : []);
+        setLeaveRequests(Array.isArray(lvData) ? lvData : []);
+      }
     } catch (err) {
       addToast('Failed to load teacher portal data', 'error');
     } finally {
@@ -106,28 +110,7 @@ export const TeacherDashboard = () => {
     }
   };
 
-  // Leave approval handlers
-  const handleApproveLeave = async (id) => {
-    try {
-      await leaveService.approve(id, 'Approved by Teacher');
-      addToast('Leave request approved', 'success');
-      const res = await leaveService.getAll();
-      if (res.success && res.data) setLeaveRequests(res.data);
-    } catch (err) {
-      addToast('Failed to approve leave', 'error');
-    }
-  };
 
-  const handleRejectLeave = async (id) => {
-    try {
-      await leaveService.reject(id, 'Rejected by Teacher');
-      addToast('Leave request rejected', 'warning');
-      const res = await leaveService.getAll();
-      if (res.success && res.data) setLeaveRequests(res.data);
-    } catch (err) {
-      addToast('Failed to reject leave', 'error');
-    }
-  };
 
   // Notification handler
   const loadNotifications = async () => {
@@ -267,58 +250,68 @@ export const TeacherDashboard = () => {
       {/* Tab 2: Leave Requests */}
       {activeTab === 'leave' && (
         <div className="card">
-          <div className="card-header">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}>
-              <FileText size={18} className="text-primary" /> Student Absence Records
+              <FileText size={18} className="text-primary" /> Leave Records
             </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className="badge badge-secondary" style={{ fontSize: '0.8125rem' }}>
+                {leaveRequests.length} Class Records
+              </span>
+              <Link to="/teacher/leave" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <ExternalLink size={13} /> Full View
+              </Link>
+            </div>
           </div>
           <div className="table-container">
-            <table className="table">
+            <table className="table" style={{ width: '100%', minWidth: '780px' }}>
               <thead>
                 <tr>
-                  <th>Student ID</th>
-                  <th>Date Period</th>
+                  <th style={{ width: '90px' }}>Record #</th>
+                  <th>Student Name</th>
+                  <th>Admission No</th>
+                  <th>Class & Section</th>
+                  <th>Leave Date</th>
                   <th>Reason</th>
-                  <th>Status</th>
-                  <th>Review Note</th>
-                  <th style={{ textAlign: 'right' }}>Action</th>
+                  <th>Submitted On</th>
+                  <th style={{ textAlign: 'center', width: '120px' }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {leaveRequests.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
-                      {loading ? 'Loading leave requests...' : 'No student leave records submitted.'}
+                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
+                      {loading ? 'Loading leave records...' : 'No student leave records for your assigned class.'}
                     </td>
                   </tr>
                 ) : (
-                  leaveRequests.map((r) => (
-                    <tr key={r.id}>
-                      <td><strong>Student #{r.studentId}</strong></td>
-                      <td style={{ fontWeight: 600 }}>{r.startDate} to {r.endDate || r.startDate}</td>
-                      <td style={{ maxWidth: '280px', fontSize: '0.875rem' }}>{r.reason}</td>
-                      <td>
-                        <span className={`badge ${r.status === 'APPROVED' ? 'badge-success' : r.status === 'REJECTED' ? 'badge-danger' : 'badge-warning'}`}>
-                          {r.status || 'RECORDED'}
-                        </span>
-                      </td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{r.reviewNote || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        {r.status === 'PENDING' ? (
-                          <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
-                            <button className="btn btn-sm btn-primary" onClick={() => handleApproveLeave(r.id)}>
-                              Approve
-                            </button>
-                            <button className="btn btn-sm btn-danger" onClick={() => handleRejectLeave(r.id)}>
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Complete</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  leaveRequests.map((r) => {
+                    const recId = r.recordId || r.id;
+                    const studentName = r.studentName || `Student #${r.studentId}`;
+                    const admissionNo = r.admissionNumber || '—';
+                    const classDisplay = r.className
+                      ? `${toDisplayClassName(r.className)}${r.section ? ` (${r.section})` : ''}`
+                      : '—';
+                    const leaveDate = r.leaveDate || r.startDate || '—';
+                    const submittedOn = r.submittedAt || r.createdAt
+                      ? new Date(r.submittedAt || r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                      : '—';
+
+                    return (
+                      <tr key={recId}>
+                        <td><strong>#{recId}</strong></td>
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{studentName}</td>
+                        <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.875rem' }}>{admissionNo}</td>
+                        <td><span className="badge badge-primary">{classDisplay}</span></td>
+                        <td style={{ fontWeight: 600 }}>{leaveDate}</td>
+                        <td style={{ maxWidth: '280px', fontSize: '0.875rem' }}>{r.reason || '—'}</td>
+                        <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>{submittedOn}</td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className="badge badge-primary">RECORDED</span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -1,5 +1,6 @@
 package com.school.attendance.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -8,7 +9,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Leave request submitted by a parent for their child.
+ * Leave record submitted by a parent for their child.
+ * Recorded directly — no approval/rejection workflow.
  */
 @Entity
 @Table(name = "leave_requests")
@@ -30,6 +32,7 @@ public class LeaveRequest {
     @Column(nullable = false)
     private Long parentId;
 
+    /** Single-day leave date (mapped to startDate in database for backward schema compatibility) */
     @Column(nullable = false)
     private LocalDate startDate;
 
@@ -38,13 +41,34 @@ public class LeaveRequest {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String reason;
 
-    /** PENDING, APPROVED, REJECTED */
+    /** RECORDED */
     @Column(nullable = false)
-    private String status;
+    @Builder.Default
+    private String status = "RECORDED";
 
     private String reviewNote;
 
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
+
+    /** Convenience getter and JSON property for single-day leave date */
+    @JsonProperty("leaveDate")
+    public LocalDate getLeaveDate() {
+        return startDate;
+    }
+
+    /** Convenience setter for single-day leave date */
+    @JsonProperty("leaveDate")
+    public void setLeaveDate(LocalDate leaveDate) {
+        if (leaveDate != null) {
+            this.startDate = leaveDate;
+        }
+    }
+
+    /** Convenience getter for submitted timestamp */
+    @JsonProperty("submittedAt")
+    public LocalDateTime getSubmittedAt() {
+        return createdAt;
+    }
 }
