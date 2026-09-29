@@ -5,7 +5,7 @@ import { useToast } from '../context/ToastContext';
 import { GraduationCap, LogIn, KeyRound, User, Phone, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
 export const Login = () => {
-  const [mode, setMode] = useState('parent'); // 'parent' or 'staff'
+  const [mode, setMode] = useState('staff'); // 'staff' or 'parent'
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
@@ -19,14 +19,34 @@ export const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (mode === 'parent') {
-      if (!phoneNumber || !password) {
-        addToast('Please enter both phone number and password', 'warning');
+    let cleanEmail = email.trim();
+    let cleanPhone = phoneNumber.trim();
+    let cleanPassword = password.trim();
+
+    // Auto-expand shortcut usernames and common demo variations
+    if (mode === 'staff') {
+      if (cleanEmail.toLowerCase() === 'admin') cleanEmail = 'admin@school.com';
+      if (cleanEmail.toLowerCase() === 'teacher') cleanEmail = 'teacher@school.com';
+      if (cleanEmail.toLowerCase() === 'parent') cleanEmail = 'parent@school.com';
+
+      // Auto-correct common case variations for demo accounts
+      if (cleanEmail.toLowerCase() === 'admin@school.com' && (cleanPassword.toLowerCase() === 'admin123' || cleanPassword.toLowerCase() === 'admin')) {
+        cleanPassword = 'Admin@123';
+      }
+      if (cleanEmail.toLowerCase() === 'teacher@school.com' && (cleanPassword.toLowerCase() === 'teacher123' || cleanPassword.toLowerCase() === 'teacher')) {
+        cleanPassword = 'Teacher@123';
+      }
+      if (cleanEmail.toLowerCase() === 'parent@school.com' && (cleanPassword.toLowerCase() === 'parent123' || cleanPassword.toLowerCase() === 'parent')) {
+        cleanPassword = 'Parent@123';
+      }
+
+      if (!cleanEmail || !cleanPassword) {
+        addToast('Please enter both email and password', 'warning');
         return;
       }
     } else {
-      if (!email || !password) {
-        addToast('Please enter both email and password', 'warning');
+      if (!cleanPhone || !cleanPassword) {
+        addToast('Please enter both phone number and password', 'warning');
         return;
       }
     }
@@ -35,9 +55,9 @@ export const Login = () => {
       setSubmitting(true);
       let user;
       if (mode === 'parent') {
-        user = await parentLogin({ phoneNumber, password });
+        user = await parentLogin({ phoneNumber: cleanPhone, password: cleanPassword });
       } else {
-        user = await login({ email, password });
+        user = await login({ email: cleanEmail, password: cleanPassword });
       }
 
       addToast(`Welcome back, ${user.name || user.email}!`, 'success');
@@ -48,14 +68,14 @@ export const Login = () => {
       else if (user.role === 'PARENT') navigate('/parent');
       else navigate('/');
     } catch (err) {
-      addToast(err.response?.data?.message || err.message || 'Login failed', 'error');
+      addToast(err.response?.data?.message || err.message || 'Login failed. Please check your credentials.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleQuickFill = (role, val1, val2) => {
-    if (role === 'parent') {
+    if (role === 'parent-phone') {
       setMode('parent');
       setPhoneNumber(val1);
       setPassword(val2);
@@ -281,7 +301,7 @@ export const Login = () => {
               type="button"
               className="btn btn-secondary btn-sm"
               style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }}
-              onClick={() => handleQuickFill('staff', 'admin@school.com', 'admin123')}
+              onClick={() => handleQuickFill('staff', 'admin@school.com', 'Admin@123')}
             >
               Admin
             </button>
@@ -289,7 +309,7 @@ export const Login = () => {
               type="button"
               className="btn btn-secondary btn-sm"
               style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }}
-              onClick={() => handleQuickFill('staff', 'teacher@school.com', 'teacher123')}
+              onClick={() => handleQuickFill('staff', 'teacher@school.com', 'Teacher@123')}
             >
               Teacher
             </button>
@@ -297,10 +317,13 @@ export const Login = () => {
               type="button"
               className="btn btn-secondary btn-sm"
               style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }}
-              onClick={() => handleQuickFill('parent', '9876543210', 'parent123')}
+              onClick={() => handleQuickFill('parent', 'parent@school.com', 'Parent@123')}
             >
               Parent
             </button>
+          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
+            Demo Passwords: <code>Admin@123</code> &bull; <code>Teacher@123</code> &bull; <code>Parent@123</code>
           </div>
         </div>
 
