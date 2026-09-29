@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { leaveService } from '../../services/leaveService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { BookMarked, Plus, Edit2, Trash2, ToggleRight, ToggleLeft } from 'lucide-react';
 
 /**
@@ -99,6 +100,7 @@ export const LeaveReasonsPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Leave Reasons' }]} />
       <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>
           <h1 className="page-title">Leave Reasons</h1>

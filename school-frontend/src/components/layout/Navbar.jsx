@@ -52,9 +52,9 @@ export const Navbar = ({ onToggleSidebar }) => {
       <div className="navbar-user-section">
         {getRoleBadge()}
         <div className="user-badge">
-          <div className="user-avatar">{user?.username?.[0]?.toUpperCase() || 'U'}</div>
+          <div className="user-avatar">{(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}</div>
           <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-            {user?.username}
+            {user?.name || user?.email || 'User'}
           </span>
         </div>
         <button

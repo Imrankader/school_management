@@ -865,3 +865,35 @@ p, span, div, label, input, button, select, textarea {
     align-items: flex-start;
   }
 }
+
+/* ==========================================================================
+   Skeleton Shimmer & Loading States
+   ========================================================================== */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #e2e8f0 50%,
+    #f1f5f9 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-xs);
+}
+
+.empty-state-card {
+  transition: var(--transition);
+}
+
+.empty-state-card:hover {
+  border-color: var(--border-color) !important;
+}

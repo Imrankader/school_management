@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { leaveService } from '../../services/leaveService';
+import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
-import { CalendarCheck2, FileText, Search, RefreshCw } from 'lucide-react';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
+import { toDisplayClassName } from '../../utils/academicClassOrder';
+import { CalendarCheck2, FileText, Search, RefreshCw, User } from 'lucide-react';
 
 /**
  * Admin Leave Records page.
@@ -10,6 +13,7 @@ import { CalendarCheck2, FileText, Search, RefreshCw } from 'lucide-react';
  */
 export const LeaveRequestsPage = () => {
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [studentsMap, setStudentsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { addToast } = useToast();
@@ -21,11 +25,25 @@ export const LeaveRequestsPage = () => {
   const loadLeaveRequests = async () => {
     try {
       setLoading(true);
-      const res = await leaveService.getAll();
-      if (res.success && res.data) {
-        setLeaveRequests(res.data);
+      const [res, stuRes] = await Promise.allSettled([
+        leaveService.getAll(),
+        studentService.getAllStudents({ page: 1, pageSize: 250 }),
+      ]);
+
+      if (res.status === 'fulfilled' && res.value?.success && res.value.data) {
+        setLeaveRequests(res.value.data);
       } else {
         setLeaveRequests([]);
+      }
+
+      if (stuRes.status === 'fulfilled' && stuRes.value) {
+        const val = stuRes.value;
+        const list = val.data?.data || (Array.isArray(val.data) ? val.data : []);
+        const map = {};
+        list.forEach((s) => {
+          map[s.id] = s;
+        });
+        setStudentsMap(map);
       }
     } catch (err) {
       addToast('Failed to load leave records', 'error');
@@ -36,10 +54,14 @@ export const LeaveRequestsPage = () => {
 
   const filtered = leaveRequests.filter((r) => {
     const term = searchTerm.toLowerCase();
+    const stu = studentsMap[r.studentId];
     return (
       String(r.studentId).includes(term) ||
       (r.reason || '').toLowerCase().includes(term) ||
-      (r.startDate || '').includes(term)
+      (r.startDate || '').includes(term) ||
+      (stu?.name || '').toLowerCase().includes(term) ||
+      (stu?.admissionNumber || '').toLowerCase().includes(term) ||
+      (stu?.className || '').toLowerCase().includes(term)
     );
   });
 
@@ -54,6 +76,8 @@ export const LeaveRequestsPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Leave Records' }]} />
+
       {/* Header */}
       <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>
@@ -84,7 +108,7 @@ export const LeaveRequestsPage = () => {
         <input
           type="text"
           className="form-input"
-          placeholder="Search by student ID, reason, or date..."
+          placeholder="Search by student name, admission no, class, or reason..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ flex: 1, border: 'none', padding: '0.25rem 0', boxShadow: 'none' }}
@@ -107,7 +131,7 @@ export const LeaveRequestsPage = () => {
           <thead>
             <tr>
               <th style={{ width: '80px' }}>Record #</th>
-              <th>Student ID</th>
+              <th>Student Details</th>
               <th>Leave Date</th>
               <th>Reason</th>
               <th>Submitted On</th>
@@ -125,30 +149,44 @@ export const LeaveRequestsPage = () => {
                 </td>
               </tr>
             ) : (
-              filtered.map((req) => (
-                <tr key={req.id}>
-                  <td><strong>#{req.id}</strong></td>
-                  <td>
-                    <span className="badge badge-secondary" style={{ fontWeight: 600 }}>
-                      Student #{req.studentId}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight: 600 }}>
-                    {req.startDate}
-                  </td>
-                  <td style={{ maxWidth: '340px', fontSize: '0.875rem' }}>
-                    {req.reason || '—'}
-                  </td>
-                  <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-                    {req.createdAt ? formatDate(req.createdAt) : '—'}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span className="badge badge-primary">
-                      RECORDED
-                    </span>
-                  </td>
-                </tr>
-              ))
+              filtered.map((req) => {
+                const stu = studentsMap[req.studentId];
+                return (
+                  <tr key={req.id}>
+                    <td><strong>#{req.id}</strong></td>
+                    <td>
+                      {stu ? (
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {stu.name}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                            {toDisplayClassName(stu.className)} {stu.section ? `(${stu.section})` : ''} &bull; Adm: {stu.admissionNumber || `#${stu.id}`}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="badge badge-secondary" style={{ fontWeight: 600 }}>
+                          Student #{req.studentId}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>
+                      {req.startDate}
+                    </td>
+                    <td style={{ maxWidth: '340px', fontSize: '0.875rem' }}>
+                      {req.reason || '—'}
+                    </td>
+                    <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                      {req.createdAt ? formatDate(req.createdAt) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="badge badge-primary">
+                        RECORDED
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

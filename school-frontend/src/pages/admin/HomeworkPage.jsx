@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { homeworkService } from '../../services/homeworkService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { BookOpen, Plus, Trash2, Calendar, Edit2, Filter } from 'lucide-react';
 import { CLASS_CONFIG, toDisplayClassName, compareAcademicClasses } from '../../utils/academicClassOrder';
 
@@ -117,6 +118,7 @@ export const HomeworkPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Homework Management' }]} />
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.75rem', fontWeight: 700 }}>

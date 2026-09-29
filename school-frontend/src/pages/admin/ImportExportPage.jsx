@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { FileSpreadsheet, Upload, Download, CheckCircle, AlertCircle, RefreshCw, Info, AlertTriangle } from 'lucide-react';
 
 export const ImportExportPage = () => {
@@ -67,6 +68,7 @@ export const ImportExportPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Data Import & Export' }]} />
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.75rem', fontWeight: 700 }}>
           <FileSpreadsheet className="text-primary" /> Data Import & Export

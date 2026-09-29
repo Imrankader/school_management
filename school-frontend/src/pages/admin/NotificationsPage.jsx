@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { notificationService } from '../../services/notificationService';
 import { useToast } from '../../context/ToastContext';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { Bell, Send, Calendar, Users, CheckCircle2, RefreshCw, Plus } from 'lucide-react';
 
 export const NotificationsPage = () => {
@@ -85,6 +86,7 @@ export const NotificationsPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Notifications' }]} />
       {/* Header */}
       <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>

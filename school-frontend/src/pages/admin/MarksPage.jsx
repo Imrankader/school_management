@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { marksService } from '../../services/marksService';
 import { studentService } from '../../services/studentService';
 import { Modal } from '../../components/common/Modal';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import {
   Award,
   Upload,
@@ -743,6 +744,7 @@ export const MarksPage = () => {
 
   return (
     <div className="marks-page" style={{ padding: '0 0.5rem' }}>
+      <Breadcrumb items={[{ label: 'Marks Management' }]} />
       {/* Top Header */}
       <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>

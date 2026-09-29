@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { academicService } from '../../services/academicService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { BookOpen, Award, Calendar, Plus } from 'lucide-react';
 import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
 
@@ -88,6 +89,7 @@ export const AcademicsPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Academic Management' }]} />
       <div className="page-header">
         <div>
           <h1 className="page-title">Academic Management</h1>

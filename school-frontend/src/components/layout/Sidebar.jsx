@@ -174,7 +174,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
               flexShrink: 0,
             }}
           >
-            {(user?.name?.[0] || user?.username?.[0] || 'U').toUpperCase()}
+            {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
           </div>
           <div style={{ minWidth: 0, overflow: 'hidden' }}>
             <div
@@ -187,7 +187,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
                 textOverflow: 'ellipsis',
               }}
             >
-              {user?.name || user?.username}
+              {user?.name || user?.email || 'User'}
             </div>
             <div style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>{user?.role}</div>
           </div>

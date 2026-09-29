@@ -3,6 +3,7 @@ import { authService } from '../../services/authService';
 import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import {
   Users,
   Plus,
@@ -111,6 +112,7 @@ export const ParentsPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'Parent Accounts' }]} />
       <div className="page-header">
         <div>
           <h1 className="page-title">Parent Account Management</h1>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { holidayService } from '../../services/holidayService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
+import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { Calendar, Plus, Trash2, Edit2, Sun } from 'lucide-react';
 
 export const HolidayPage = () => {
@@ -106,6 +107,7 @@ export const HolidayPage = () => {
 
   return (
     <div>
+      <Breadcrumb items={[{ label: 'School Holidays & Calendar' }]} />
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.75rem', fontWeight: 700 }}>
