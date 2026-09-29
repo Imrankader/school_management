@@ -66,7 +66,7 @@ export const ImportExportPage = () => {
   };
 
   return (
-    <div className="page-container">
+    <div>
       <div className="page-header" style={{ marginBottom: '1.5rem' }}>
         <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.75rem', fontWeight: 700 }}>
           <FileSpreadsheet className="text-primary" /> Data Import & Export

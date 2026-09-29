@@ -744,51 +744,48 @@ export const MarksPage = () => {
   return (
     <div className="marks-page" style={{ padding: '0 0.5rem' }}>
       {/* Top Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <Award size={28} style={{ color: 'var(--primary)' }} />
-            Marks Management
-          </h1>
-          <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-            Enter subject-wise marks, edit records, and perform whole-school bulk uploads.
+          <h1 className="page-title">Marks Management</h1>
+          <p className="page-subtitle">
+            Manage subject-wise examination marks and academic results.
           </p>
         </div>
 
         {/* Tab Navigation Buttons */}
-        <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-card)', padding: '0.35rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', background: 'var(--bg-subtle)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
           <button
             type="button"
-            className={`btn ${activeTab === 'entry' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            className={`btn btn-sm ${activeTab === 'entry' ? 'btn-primary' : 'btn-outline'}`}
+            style={{ fontSize: '0.8125rem', border: 'none', background: activeTab === 'entry' ? 'var(--primary)' : 'transparent', color: activeTab === 'entry' ? '#fff' : 'var(--text-secondary)' }}
             onClick={() => setActiveTab('entry')}
           >
-            <Edit size={16} /> Enter Marks
+            <Edit size={14} /> Enter Marks
           </button>
           <button
             type="button"
-            className={`btn ${activeTab === 'view' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            className={`btn btn-sm ${activeTab === 'view' ? 'btn-primary' : 'btn-outline'}`}
+            style={{ fontSize: '0.8125rem', border: 'none', background: activeTab === 'view' ? 'var(--primary)' : 'transparent', color: activeTab === 'view' ? '#fff' : 'var(--text-secondary)' }}
             onClick={() => setActiveTab('view')}
           >
-            <Search size={16} /> Marks View
+            <Search size={14} /> Marks View
           </button>
           <button
             type="button"
-            className={`btn ${activeTab === 'bulk' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            className={`btn btn-sm ${activeTab === 'bulk' ? 'btn-primary' : 'btn-outline'}`}
+            style={{ fontSize: '0.8125rem', border: 'none', background: activeTab === 'bulk' ? 'var(--primary)' : 'transparent', color: activeTab === 'bulk' ? '#fff' : 'var(--text-secondary)' }}
             onClick={() => setActiveTab('bulk')}
           >
-            <Upload size={16} /> Bulk Upload
+            <Upload size={14} /> Bulk Upload
           </button>
           {isAdmin && (
             <button
               type="button"
-              className={`btn ${activeTab === 'config' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '0.85rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              className={`btn btn-sm ${activeTab === 'config' ? 'btn-primary' : 'btn-outline'}`}
+              style={{ fontSize: '0.8125rem', border: 'none', background: activeTab === 'config' ? 'var(--primary)' : 'transparent', color: activeTab === 'config' ? '#fff' : 'var(--text-secondary)' }}
               onClick={() => setActiveTab('config')}
             >
-              <BookOpen size={16} /> Subjects & Exams
+              <BookOpen size={14} /> Subjects & Exams
             </button>
           )}
         </div>

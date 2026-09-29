@@ -23,7 +23,8 @@ import {
   ChevronRight,
   Layers,
   RotateCcw,
-  Users
+  Users,
+  Download
 } from 'lucide-react';
 
 export const StudentsPage = () => {
@@ -80,7 +81,40 @@ export const StudentsPage = () => {
     password: ''
   });
 
+  const [viewingStudent, setViewingStudent] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [sectionFilter, setSectionFilter] = useState('ALL');
+
   const { addToast } = useToast();
+
+  const handleExportCSV = (studentList, filenamePrefix = 'Students') => {
+    if (!studentList || studentList.length === 0) {
+      addToast('No student records to export', 'warning');
+      return;
+    }
+    const headers = ['Admission No', 'Student Name', 'Class', 'Section', 'Gender', 'DOB', 'Father Mobile', 'Mother Mobile', 'Address', 'Status'];
+    const rows = studentList.map((s) => [
+      s.admissionNumber || s.rollNumber || '',
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      s.className || '',
+      s.section || '',
+      s.gender || '',
+      s.dateOfBirth || '',
+      s.fatherMobileNumber || s.contactNumber || '',
+      s.motherMobileNumber || '',
+      `"${(s.address || '').replace(/"/g, '""')}"`,
+      s.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast('Student records exported successfully', 'success');
+  };
 
   useEffect(() => {
     loadClassSummaries();
@@ -97,13 +131,24 @@ export const StudentsPage = () => {
   }, [classSearch, selectedClass, view]);
 
   // Multi-field search across: Student Name, Admission/Roll Number, Father/Mother/Guardian Mobile
-  // Strictly restricted to selectedClass
+  // Strictly restricted to selectedClass and filtered by status & section
   const filteredStudents = useMemo(() => {
-    if (!classSearch || !classSearch.trim()) return students;
+    let list = students;
+    if (statusFilter === 'ACTIVE') {
+      list = list.filter((s) => s.isActive !== false);
+    } else if (statusFilter === 'INACTIVE') {
+      list = list.filter((s) => s.isActive === false);
+    }
+
+    if (sectionFilter !== 'ALL') {
+      list = list.filter((s) => (s.section || '').trim().toUpperCase() === sectionFilter.toUpperCase());
+    }
+
+    if (!classSearch || !classSearch.trim()) return list;
     const q = classSearch.trim().toLowerCase();
     const rawDigits = q.replace(/\D/g, '');
 
-    return students.filter((s) => {
+    return list.filter((s) => {
       // Scoped strictly to the currently selected class
       if (s.className && selectedClass && s.className.trim().toLowerCase() !== selectedClass.trim().toLowerCase()) {
         return false;
@@ -472,7 +517,7 @@ export const StudentsPage = () => {
   };
 
   return (
-    <div className="page-container" style={{ padding: '1.5rem 2rem', maxWidth: '1440px', margin: '0 auto' }}>
+    <div>
       {/* ========================================================================= */}
       {/* 1. MAIN STUDENT DIRECTORY — CLASS SUMMARY VIEW */}
       {/* ========================================================================= */}
@@ -511,7 +556,7 @@ export const StudentsPage = () => {
               </div>
               <h1
                 style={{
-                  fontSize: '1.65rem',
+                  fontSize: '1.625rem',
                   fontWeight: 700,
                   margin: 0,
                   color: 'var(--text-main)',
@@ -520,10 +565,10 @@ export const StudentsPage = () => {
                   gap: '0.5rem',
                 }}
               >
-                Student Directory
+                Students
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
-                Manage student records, directory profiles, and admissions by class.
+                Manage student profiles, enrollment and academic information.
               </p>
             </div>
 
@@ -544,11 +589,22 @@ export const StudentsPage = () => {
               <button
                 type="button"
                 className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
+                onClick={() => handleExportCSV(masterStudents.length > 0 ? masterStudents : students, 'EduCore_Students')}
+                title="Export student directory to CSV"
+              >
+                <Download size={15} />
+                Export
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem', fontWeight: 600 }}
                 onClick={() => handleOpenBulkUpload(null)}
               >
                 <Upload size={15} />
-                Bulk Upload Students
+                Import
               </button>
 
               <button
@@ -813,12 +869,12 @@ export const StudentsPage = () => {
                 <table className="table" style={{ margin: 0 }}>
                   <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle, #e2e8f0)' }}>
                     <tr>
-                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADM NO</th>
-                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>NAME</th>
-                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>CLASS & SECTION</th>
-                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>PARENT CONTACT</th>
-                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADDRESS</th>
-                      <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ACTIONS</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Admission No</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Student Name</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Class & Section</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Parent Contact</th>
+                      <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
+                      <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -862,14 +918,14 @@ export const StudentsPage = () => {
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
                         >
                           <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                            {s.admissionNumber}
+                            {s.admissionNumber || s.rollNumber}
                           </td>
                           <td style={{ padding: '0.85rem 1rem' }}>
-                            <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.925rem' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.875rem' }}>
                               {s.name}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                              {s.dateOfBirth ? `DOB: ${s.dateOfBirth}` : ''} {s.gender ? `| ${s.gender}` : ''}
+                              {s.dateOfBirth ? `DOB: ${s.dateOfBirth}` : ''} {s.gender ? `• ${s.gender}` : ''}
                             </div>
                           </td>
                           <td style={{ padding: '0.85rem 1rem' }}>
@@ -896,33 +952,37 @@ export const StudentsPage = () => {
                             </button>
                           </td>
                           <td style={{ padding: '0.85rem 1rem' }}>
-                            <div style={{ fontSize: '0.825rem', lineHeight: '1.45' }}>
-                              <div>
-                                <span style={{ color: 'var(--text-muted)' }}>Father: </span>
-                                <span style={{ fontWeight: 500 }}>{s.fatherMobileNumber || s.contactNumber || '—'}</span>
+                            <div style={{ fontSize: '0.8125rem', lineHeight: '1.45' }}>
+                              <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>
+                                {s.fatherName || s.guardianName || 'Parent'}
                               </div>
-                              <div>
-                                <span style={{ color: 'var(--text-muted)' }}>Mother: </span>
-                                <span style={{ fontWeight: 500 }}>{s.motherMobileNumber || '—'}</span>
-                              </div>
-                              <div>
-                                <span style={{ color: 'var(--text-muted)' }}>Guardian: </span>
-                                <span style={{ fontWeight: 500 }}>{s.guardianMobileNumber || '—'}</span>
+                              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                                {s.fatherMobileNumber || s.contactNumber || s.guardianMobileNumber || '—'}
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'var(--text-main)' }}>
-                            {s.address || '—'}
+                          <td style={{ padding: '0.85rem 1rem' }}>
+                            <span className={`badge ${s.isActive !== false ? 'badge-success' : 'badge-danger'}`}>
+                              {s.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+                            </span>
                           </td>
                           <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                            <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                              <button
+                                onClick={() => setViewingStudent(s)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ padding: '0.35rem 0.55rem' }}
+                                title="View student profile"
+                              >
+                                <Eye size={13} />
+                              </button>
                               <button
                                 onClick={() => handleOpenEdit(s)}
                                 className="btn btn-secondary btn-sm"
                                 style={{ padding: '0.35rem 0.55rem' }}
                                 title="Edit student profile"
                               >
-                                <Edit2 size={14} />
+                                <Edit2 size={13} />
                               </button>
                               <button
                                 onClick={() => openDeleteModal(s)}
@@ -930,7 +990,7 @@ export const StudentsPage = () => {
                                 style={{ padding: '0.35rem 0.55rem' }}
                                 title="Delete student"
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={13} />
                               </button>
                             </div>
                           </td>
@@ -1282,8 +1342,34 @@ export const StudentsPage = () => {
               )}
             </div>
 
-            {/* Compact Action Buttons */}
+            {/* Action & Filter Controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <select
+                className="form-select"
+                value={sectionFilter}
+                onChange={(e) => setSectionFilter(e.target.value)}
+                style={{ width: 'auto', minWidth: '110px', height: '38px', fontSize: '0.825rem' }}
+                title="Filter by Section"
+              >
+                <option value="ALL">All Sections</option>
+                <option value="A">Section A</option>
+                <option value="B">Section B</option>
+                <option value="C">Section C</option>
+                <option value="D">Section D</option>
+              </select>
+
+              <select
+                className="form-select"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{ width: 'auto', minWidth: '110px', height: '38px', fontSize: '0.825rem' }}
+                title="Filter by Status"
+              >
+                <option value="ALL">All Status</option>
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1294,17 +1380,29 @@ export const StudentsPage = () => {
                   fontSize: '0.825rem',
                   height: '38px',
                   padding: '0 0.85rem',
-                  fontWeight: 600,
-                  borderRadius: 'var(--radius-md, 6px)',
-                  border: '1px solid var(--border-subtle, #e2e8f0)',
-                  backgroundColor: '#ffffff',
-                  color: 'var(--text-main, #334155)',
-                  whiteSpace: 'nowrap',
+                }}
+                onClick={() => handleExportCSV(filteredStudents, `${selectedClass}_Students`)}
+                title="Export class students to CSV"
+              >
+                <Download size={14} />
+                Export
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontSize: '0.825rem',
+                  height: '38px',
+                  padding: '0 0.85rem',
                 }}
                 onClick={() => handleOpenBulkUpload(selectedClass)}
               >
                 <Upload size={14} />
-                Bulk Upload
+                Import
               </button>
 
               <button
@@ -1318,11 +1416,6 @@ export const StudentsPage = () => {
                   height: '38px',
                   padding: '0 0.95rem',
                   fontWeight: 600,
-                  borderRadius: 'var(--radius-md, 6px)',
-                  backgroundColor: 'var(--primary, #4f46e5)',
-                  color: '#ffffff',
-                  border: 'none',
-                  whiteSpace: 'nowrap',
                 }}
                 onClick={() => handleOpenAdd(selectedClass)}
               >
@@ -1337,18 +1430,19 @@ export const StudentsPage = () => {
             <table className="table" style={{ margin: 0 }}>
               <thead style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-subtle, #e2e8f0)' }}>
                 <tr>
-                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADM NO</th>
-                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>NAME</th>
-                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>CLASS & SECTION</th>
-                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>PARENT CONTACT</th>
-                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ADDRESS</th>
-                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>ACTIONS</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Admission No</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Student Name</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Class</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Section</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Parent</th>
+                  <th style={{ padding: '0.75rem 1rem', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
+                  <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.725rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingStudents ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                         <RotateCcw size={22} className="animate-spin text-primary" />
                         <span style={{ fontSize: '0.9rem' }}>Fetching {toDisplayClassName(selectedClass)} students...</span>
@@ -1357,14 +1451,14 @@ export const StudentsPage = () => {
                   </tr>
                 ) : filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3.5rem 1rem' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3.5rem 1rem' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                         <Search size={32} style={{ opacity: 0.35, color: 'var(--text-muted)', marginBottom: '0.25rem' }} />
                         <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>
                           No students found
                         </span>
                         <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '440px', lineHeight: 1.45 }}>
-                          Try searching with a different student name, admission number, or parent mobile number.
+                          Try adjusting search terms, section or status filters.
                         </span>
                       </div>
                     </td>
@@ -1378,58 +1472,56 @@ export const StudentsPage = () => {
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
                     >
                       <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                        {s.admissionNumber}
+                        {s.admissionNumber || s.rollNumber}
                       </td>
                       <td style={{ padding: '0.85rem 1rem' }}>
-                        <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.925rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.875rem' }}>
                           {s.name}
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {s.dateOfBirth ? `DOB: ${s.dateOfBirth}` : ''} {s.gender ? `| ${s.gender}` : ''}
+                          {s.dateOfBirth ? `DOB: ${s.dateOfBirth}` : ''} {s.gender ? `• ${s.gender}` : ''}
                         </div>
                       </td>
                       <td style={{ padding: '0.85rem 1rem' }}>
-                        <span
-                          style={{
-                            backgroundColor: '#eef2ff',
-                            color: '#3730a3',
-                            padding: '0.2rem 0.55rem',
-                            borderRadius: '4px',
-                            fontSize: '0.8rem',
-                            fontWeight: 600,
-                          }}
-                        >
-                          {toDisplayClassName(s.className)}{s.section ? ` - ${s.section}` : ''}
+                        <span className="badge badge-primary">
+                          {toDisplayClassName(s.className)}
                         </span>
                       </td>
+                      <td style={{ padding: '0.85rem 1rem', fontSize: '0.85rem', fontWeight: 500 }}>
+                        {s.section || '—'}
+                      </td>
                       <td style={{ padding: '0.85rem 1rem' }}>
-                        <div style={{ fontSize: '0.825rem', lineHeight: '1.45' }}>
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Father: </span>
-                            <span style={{ fontWeight: 500 }}>{s.fatherMobileNumber || s.contactNumber || '—'}</span>
+                        <div style={{ fontSize: '0.8125rem' }}>
+                          <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>
+                            {s.fatherName || s.guardianName || 'Parent'}
                           </div>
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Mother: </span>
-                            <span style={{ fontWeight: 500 }}>{s.motherMobileNumber || '—'}</span>
-                          </div>
-                          <div>
-                            <span style={{ color: 'var(--text-muted)' }}>Guardian: </span>
-                            <span style={{ fontWeight: 500 }}>{s.guardianMobileNumber || '—'}</span>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                            {s.fatherMobileNumber || s.contactNumber || s.guardianMobileNumber || '—'}
                           </div>
                         </div>
                       </td>
-                      <td style={{ padding: '0.85rem 1rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.85rem', color: 'var(--text-main)' }}>
-                        {s.address || '—'}
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <span className={`badge ${s.isActive !== false ? 'badge-success' : 'badge-danger'}`}>
+                          {s.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
                       </td>
                       <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                          <button
+                            onClick={() => setViewingStudent(s)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.35rem 0.55rem' }}
+                            title="View student profile"
+                          >
+                            <Eye size={13} />
+                          </button>
                           <button
                             onClick={() => handleOpenEdit(s)}
                             className="btn btn-secondary btn-sm"
                             style={{ padding: '0.35rem 0.55rem' }}
                             title="Edit student profile"
                           >
-                            <Edit2 size={14} />
+                            <Edit2 size={13} />
                           </button>
                           <button
                             onClick={() => openDeleteModal(s)}
@@ -1437,7 +1529,7 @@ export const StudentsPage = () => {
                             style={{ padding: '0.35rem 0.55rem' }}
                             title="Delete student"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
@@ -1867,6 +1959,120 @@ export const StudentsPage = () => {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.5' }}>
               This will permanently remove the student record from the directory.
             </p>
+          </div>
+        </Modal>
+      )}
+
+      {/* View Student Profile Modal */}
+      {viewingStudent && (
+        <Modal
+          isOpen={!!viewingStudent}
+          onClose={() => setViewingStudent(null)}
+          title={`Student Profile — ${viewingStudent.name || 'Details'}`}
+          maxWidth="640px"
+          footer={
+            <div style={{ display: 'flex', gap: '0.5rem', width: '100%', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setViewingStudent(null)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  const s = viewingStudent;
+                  setViewingStudent(null);
+                  handleOpenEdit(s);
+                }}
+              >
+                <Edit2 size={14} /> Edit Student
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--primary-light)',
+                  color: 'var(--primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.2rem',
+                  fontWeight: 700,
+                  border: '1px solid var(--primary-border)',
+                }}
+              >
+                {(viewingStudent.name?.[0] || 'S').toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{viewingStudent.name}</h4>
+                <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Admission #{viewingStudent.admissionNumber || viewingStudent.rollNumber || 'N/A'} • {toDisplayClassName(viewingStudent.className)} {viewingStudent.section ? `(${viewingStudent.section})` : ''}
+                </div>
+              </div>
+              <span className={`badge ${viewingStudent.isActive !== false ? 'badge-success' : 'badge-danger'}`}>
+                {viewingStudent.isActive !== false ? 'ACTIVE' : 'INACTIVE'}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Date of Birth</div>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.dateOfBirth || '—'}</div>
+              </div>
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Gender</div>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.gender || '—'}</div>
+              </div>
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Blood Group</div>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.bloodGroup || '—'}</div>
+              </div>
+              <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Joining Date</div>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.joiningDate || '—'}</div>
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Parent & Emergency Contacts
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Father Name & Mobile</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.fatherName || '—'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{viewingStudent.fatherMobileNumber || '—'}</div>
+                </div>
+                <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Mother Name & Mobile</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.motherName || '—'}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{viewingStudent.motherMobileNumber || '—'}</div>
+                </div>
+                {viewingStudent.guardianName && (
+                  <div style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)', gridColumn: 'span 2' }}>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Guardian Name & Mobile</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)' }}>{viewingStudent.guardianName}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{viewingStudent.guardianMobileNumber || '—'}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {viewingStudent.address && (
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem' }}>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Residential Address</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginTop: '2px' }}>{viewingStudent.address}</div>
+              </div>
+            )}
           </div>
         </Modal>
       )}

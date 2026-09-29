@@ -3,9 +3,11 @@ package com.school.attendance.service;
 import com.school.attendance.dto.AttendanceDTO;
 import com.school.attendance.entity.Attendance;
 import com.school.attendance.entity.Holiday;
+import com.school.attendance.entity.LeaveReason;
 import com.school.attendance.entity.LeaveRequest;
 import com.school.attendance.repository.AttendanceRepository;
 import com.school.attendance.repository.HolidayRepository;
+import com.school.attendance.repository.LeaveReasonRepository;
 import com.school.attendance.repository.LeaveRequestRepository;
 import com.school.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Business logic for Attendance, Holidays, and Leave Requests.
+ * Business logic for Attendance, Holidays, Leave Requests, and Leave Reasons.
  */
 @Service
 @RequiredArgsConstructor
@@ -27,6 +29,7 @@ public class AttendanceService {
     private final AttendanceRepository attendanceRepository;
     private final HolidayRepository holidayRepository;
     private final LeaveRequestRepository leaveRequestRepository;
+    private final LeaveReasonRepository leaveReasonRepository;
 
     // ---- Attendance ----
 
@@ -62,7 +65,7 @@ public class AttendanceService {
                 .map(this::toDTO)
                 .toList();
     }
-    
+
     public List<AttendanceDTO> getAttendanceByDateAndType(LocalDate date, com.school.common.enums.PersonType personType) {
         return attendanceRepository.findByPersonTypeAndDate(personType, date).stream()
                 .map(this::toDTO)
@@ -106,14 +109,18 @@ public class AttendanceService {
         holidayRepository.deleteById(id);
     }
 
-    // ---- Leave Requests ----
+    // ---- Leave Requests (no approval workflow) ----
 
+    /**
+     * Parent submits leave. Status is set to SUBMITTED immediately.
+     * No approval required.
+     */
     public LeaveRequest submitLeave(Long studentId, Long parentId, LeaveRequest request) {
         request.setStudentId(studentId);
         request.setParentId(parentId);
-        request.setStatus("PENDING");
+        request.setStatus("SUBMITTED");
         LeaveRequest saved = leaveRequestRepository.save(request);
-        log.info("Leave request submitted for student {} by parent {}", studentId, parentId);
+        log.info("Leave submitted for student {} by parent {} — recorded directly", studentId, parentId);
         return saved;
     }
 
@@ -125,19 +132,50 @@ public class AttendanceService {
         return leaveRequestRepository.findByParentId(parentId);
     }
 
-    public LeaveRequest approveLeave(Long id, String note) {
-        LeaveRequest leave = leaveRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("LeaveRequest", "id", id));
-        leave.setStatus("APPROVED");
-        leave.setReviewNote(note);
-        return leaveRequestRepository.save(leave);
+    // ---- Leave Reasons (Admin-managed) ----
+
+    /** Return only active reasons for parent dropdown. */
+    public List<LeaveReason> getActiveLeaveReasons() {
+        return leaveReasonRepository.findByActiveTrueOrderByEnglishReasonAsc();
     }
 
-    public LeaveRequest rejectLeave(Long id, String note) {
-        LeaveRequest leave = leaveRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("LeaveRequest", "id", id));
-        leave.setStatus("REJECTED");
-        leave.setReviewNote(note);
-        return leaveRequestRepository.save(leave);
+    /** Return all reasons (active + inactive) for admin management view. */
+    public List<LeaveReason> getAllLeaveReasons() {
+        return leaveReasonRepository.findAll();
+    }
+
+    public LeaveReason createLeaveReason(LeaveReason reason) {
+        reason.setActive(true);
+        return leaveReasonRepository.save(reason);
+    }
+
+    public LeaveReason updateLeaveReason(Long id, LeaveReason updated) {
+        LeaveReason existing = leaveReasonRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveReason", "id", id));
+        existing.setEnglishReason(updated.getEnglishReason());
+        existing.setTamilMeaning(updated.getTamilMeaning());
+        return leaveReasonRepository.save(existing);
+    }
+
+    /**
+     * Soft-delete a leave reason by marking it inactive.
+     * Historical leave records that stored the reason text remain untouched.
+     */
+    public void deactivateLeaveReason(Long id) {
+        LeaveReason existing = leaveReasonRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveReason", "id", id));
+        existing.setActive(false);
+        leaveReasonRepository.save(existing);
+        log.info("Leave reason id={} deactivated (soft-deleted)", id);
+    }
+
+    /**
+     * Re-activate a previously deactivated reason.
+     */
+    public LeaveReason reactivateLeaveReason(Long id) {
+        LeaveReason existing = leaveReasonRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("LeaveReason", "id", id));
+        existing.setActive(true);
+        return leaveReasonRepository.save(existing);
     }
 }

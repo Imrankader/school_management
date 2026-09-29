@@ -52,42 +52,41 @@ export const Register = () => {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#0f172a',
-        backgroundImage: 'radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.2) 0, transparent 50%), radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.15) 0, transparent 50%)',
         padding: '1.5rem',
       }}
     >
       <div
         style={{
           width: '100%',
-          maxWidth: '480px',
-          background: 'rgba(255, 255, 255, 0.98)',
-          backdropFilter: 'blur(16px)',
+          maxWidth: '440px',
+          background: '#ffffff',
           borderRadius: 'var(--radius-lg)',
           boxShadow: 'var(--shadow-xl)',
-          padding: '2.5rem',
-          border: '1px solid rgba(255, 255, 255, 0.4)',
+          padding: '2.25rem',
+          border: '1px solid var(--border-subtle)',
         }}
       >
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div
             style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: 'var(--radius-md)',
-              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              width: '44px',
+              height: '44px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 1rem',
+              margin: '0 auto 0.75rem',
               color: '#fff',
-              boxShadow: '0 8px 16px rgba(79, 70, 229, 0.3)',
             }}
           >
-            <GraduationCap size={32} />
+            <GraduationCap size={24} />
           </div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Create an Account</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-            Register new user credentials for EduCore
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+            Create Staff Account
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
+            Register new administrator credentials for EduCore
           </p>
         </div>
 
@@ -106,8 +105,8 @@ export const Register = () => {
                 required
               />
               <User
-                size={18}
-                style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
+                size={15}
+                style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
               />
             </div>
           </div>
@@ -119,15 +118,15 @@ export const Register = () => {
                 type="email"
                 name="email"
                 className="form-input"
-                placeholder="you@example.com"
+                placeholder="name@school.com"
                 value={formData.email}
                 onChange={handleChange}
                 style={{ paddingLeft: '2.4rem' }}
                 required
               />
               <Mail
-                size={18}
-                style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
+                size={15}
+                style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
               />
             </div>
           </div>
@@ -139,21 +138,21 @@ export const Register = () => {
                 type="password"
                 name="password"
                 className="form-input"
-                placeholder="••••••••"
+                placeholder="Choose a strong password"
                 value={formData.password}
                 onChange={handleChange}
                 style={{ paddingLeft: '2.4rem' }}
                 required
               />
               <KeyRound
-                size={18}
-                style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
+                size={15}
+                style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
               />
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">User Role</label>
+          <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label">System Role</label>
             <div style={{ position: 'relative' }}>
               <select
                 name="role"
@@ -162,13 +161,12 @@ export const Register = () => {
                 onChange={handleChange}
                 style={{ paddingLeft: '2.4rem' }}
               >
-                <option value="ADMIN">ADMIN (System Administrator)</option>
-                <option value="TEACHER">TEACHER (Instructor)</option>
-                <option value="PARENT">PARENT (Guardian)</option>
+                <option value="ADMIN">Administrator</option>
+                <option value="TEACHER">Teacher / Faculty</option>
               </select>
               <ShieldCheck
-                size={18}
-                style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
+                size={15}
+                style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
               />
             </div>
           </div>
@@ -176,15 +174,15 @@ export const Register = () => {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: '100%', padding: '0.8rem', marginTop: '0.5rem' }}
+            style={{ width: '100%', padding: '0.65rem', fontWeight: 600 }}
             disabled={submitting}
           >
-            <UserPlus size={18} />
-            {submitting ? 'Registering...' : 'Complete Registration'}
+            <UserPlus size={15} />
+            <span>{submitting ? 'Registering...' : 'Complete Registration'}</span>
           </button>
         </form>
 
-        <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+        <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
           Already have an account?{' '}
           <Link to="/login" style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
             Sign in

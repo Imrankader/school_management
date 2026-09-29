@@ -19,6 +19,7 @@ import { FeesPage } from './pages/admin/FeesPage';
 import { HomeworkPage } from './pages/admin/HomeworkPage';
 import { HolidayPage } from './pages/admin/HolidayPage';
 import { LeaveRequestsPage } from './pages/admin/LeaveRequestsPage';
+import { LeaveReasonsPage } from './pages/admin/LeaveReasonsPage';
 import { ImportExportPage } from './pages/admin/ImportExportPage';
 import { NotificationsPage } from './pages/admin/NotificationsPage';
 
@@ -83,6 +84,7 @@ export const App = () => {
                 <Route path="homework" element={<HomeworkPage />} />
                 <Route path="holidays" element={<HolidayPage />} />
                 <Route path="leave" element={<LeaveRequestsPage />} />
+                <Route path="leave-reasons" element={<LeaveReasonsPage />} />
                 <Route path="import-export" element={<ImportExportPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
               </Route>

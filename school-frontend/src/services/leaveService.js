@@ -1,33 +1,59 @@
 import api from './api';
 
 export const leaveService = {
-  // Parent submit leave request
+  // Parent submit leave request (no approval — recorded directly)
   submit: async (data) => {
     const response = await api.post('/api/attendance/leave', data);
     return response.data;
   },
 
-  // Admin/Teacher get all leave requests
+  // Admin/Teacher get all submitted leave records (read-only)
   getAll: async () => {
     const response = await api.get('/api/attendance/leave');
     return response.data;
   },
 
-  // Parent get own leave requests
+  // Parent get own submitted leave requests
   getMyLeave: async () => {
     const response = await api.get('/api/attendance/leave/my');
     return response.data;
   },
 
-  // Admin/Teacher approve
-  approve: async (id, note = '') => {
-    const response = await api.put(`/api/attendance/leave/${id}/approve`, { note });
+  // ---- Leave Reasons (bilingual English + Tamil) ----
+
+  // Get active reasons for parent dropdown
+  getActiveReasons: async () => {
+    const response = await api.get('/api/attendance/leave-reasons');
     return response.data;
   },
 
-  // Admin/Teacher reject
-  reject: async (id, note = '') => {
-    const response = await api.put(`/api/attendance/leave/${id}/reject`, { note });
+  // Admin: get ALL reasons (active + inactive)
+  getAllReasons: async () => {
+    const response = await api.get('/api/attendance/leave-reasons/all');
+    return response.data;
+  },
+
+  // Admin: create a new predefined reason
+  createReason: async (data) => {
+    const response = await api.post('/api/attendance/leave-reasons', data);
+    return response.data;
+  },
+
+  // Admin: update English/Tamil text of a reason
+  updateReason: async (id, data) => {
+    const response = await api.put(`/api/attendance/leave-reasons/${id}`, data);
+    return response.data;
+  },
+
+  // Admin: soft-delete (deactivate) a reason — historical records remain
+  deleteReason: async (id) => {
+    const response = await api.delete(`/api/attendance/leave-reasons/${id}`);
+    return response.data;
+  },
+
+  // Admin: re-enable a deactivated reason
+  reactivateReason: async (id) => {
+    const response = await api.put(`/api/attendance/leave-reasons/${id}/reactivate`);
     return response.data;
   },
 };

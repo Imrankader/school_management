@@ -30,7 +30,8 @@ import {
   AlertTriangle,
   XCircle,
   Users,
-  Pencil
+  Pencil,
+  Download
 } from 'lucide-react';
 import { getClassAcademicRank, compareAcademicClasses, toDisplayClassName } from '../../utils/academicClassOrder';
 
@@ -101,6 +102,52 @@ export const FeesPage = () => {
     loadRecentPayments();
     loadAllActiveStudents();
   }, []);
+
+  const handleExportBillingCSV = () => {
+    if (view === 'class-details' && filteredBillingRows.length > 0) {
+      const headers = ['Admission No', 'Student Name', 'Class', 'Section', 'Total Billed', 'Amount Paid', 'Outstanding', 'Status'];
+      const rows = filteredBillingRows.map((r) => [
+        r.admissionNumber || '',
+        `"${(r.studentName || '').replace(/"/g, '""')}"`,
+        r.className || selectedClass || '',
+        r.section || '',
+        r.totalAmount || 0,
+        r.paidAmount || 0,
+        r.outstandingAmount || 0,
+        r.status || '',
+      ]);
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `${selectedClass}_Billing_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      addToast('Billing records exported successfully', 'success');
+    } else if (classSummaries.length > 0) {
+      const headers = ['Class Name', 'Student Count', 'Total Billed', 'Total Collected', 'Total Outstanding', 'Collection Rate'];
+      const rows = classSummaries.map((c) => [
+        c.className || '',
+        c.studentCount || 0,
+        c.totalAmount || c.totalBilled || 0,
+        c.totalPaidAmount || c.totalCollected || 0,
+        c.totalOutstandingAmount || c.totalOutstanding || 0,
+        `${c.collectionRate || 0}%`,
+      ]);
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `Fee_Summary_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      addToast('Class fee summaries exported successfully', 'success');
+    } else {
+      addToast('No billing records to export', 'warning');
+    }
+  };
 
   const loadClassSummaries = async () => {
     try {
@@ -528,7 +575,7 @@ export const FeesPage = () => {
   };
 
   return (
-    <div className="page-container" style={{ padding: '1.5rem 2rem', maxWidth: '1440px', margin: '0 auto' }}>
+    <div>
       {/* ========================================================================= */}
       {/* 1. MAIN ERP BILLING MANAGEMENT VIEW */}
       {/* ========================================================================= */}
@@ -555,7 +602,7 @@ export const FeesPage = () => {
               </div>
               <h1
                 style={{
-                  fontSize: '1.65rem',
+                  fontSize: '1.625rem',
                   fontWeight: 700,
                   margin: 0,
                   color: 'var(--text-main)',
@@ -564,14 +611,14 @@ export const FeesPage = () => {
                   gap: '0.5rem',
                 }}
               >
-                Billing & Fee Management
+                Fee Management
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem', marginBottom: 0 }}>
                 Manage student fee structures, collections, payments and outstanding balances.
               </p>
             </div>
 
-            {/* SECTION 5 — QUICK ACTIONS */}
+            {/* Quick Actions */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <button
                 type="button"
@@ -586,6 +633,17 @@ export const FeesPage = () => {
               >
                 <RotateCcw size={15} className={loadingSummaries ? 'animate-spin' : ''} />
                 Refresh
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
+                onClick={handleExportBillingCSV}
+                title="Export fee and billing data to CSV"
+              >
+                <Download size={15} />
+                Export
               </button>
 
               <button
@@ -608,7 +666,7 @@ export const FeesPage = () => {
                 }}
               >
                 <Plus size={15} />
-                Individual Billing
+                Add Fee
               </button>
             </div>
           </div>

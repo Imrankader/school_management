@@ -5,84 +5,113 @@ import {
   GraduationCap,
   LayoutDashboard,
   Users,
-  UserCheck,
-  BookOpen,
   DollarSign,
   LogOut,
-  CalendarCheck,
   Award,
-  ClipboardList,
-  FileSpreadsheet,
-  Palmtree,
   FileText,
   Bell,
+  BookMarked,
+  X
 } from 'lucide-react';
 
-export const Sidebar = () => {
+export const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout, isAdmin, isTeacher, isParent } = useAuth();
 
+  const handleLinkClick = () => {
+    if (onClose && window.innerWidth <= 768) {
+      onClose();
+    }
+  };
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       {/* Brand Header */}
       <div className="sidebar-header">
         <div className="sidebar-brand-icon">
-          <GraduationCap size={24} />
+          <GraduationCap size={20} />
         </div>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div className="sidebar-brand-text">EduCore</div>
-          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Management System</div>
+          <div className="sidebar-brand-sub">School Management System</div>
         </div>
+        {isOpen && (
+          <button
+            onClick={onClose}
+            className="mobile-close-btn"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#94a3b8',
+              cursor: 'pointer',
+              display: 'none',
+              padding: '4px',
+            }}
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       {/* Navigation Links */}
       <nav className="sidebar-nav">
         {isAdmin && (
           <>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', padding: '0.5rem 0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
-              Admin Portal
-            </div>
-            <NavLink to="/admin" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <LayoutDashboard size={19} />
+            <div className="sidebar-section-title">Administration</div>
+            <NavLink
+              to="/admin"
+              end
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <LayoutDashboard size={18} />
               <span>Dashboard</span>
             </NavLink>
-            <NavLink to="/admin/students" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Users size={19} />
+            <NavLink
+              to="/admin/students"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Users size={18} />
               <span>Students</span>
             </NavLink>
-            <NavLink to="/admin/parents" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <UserCheck size={19} />
-              <span>Parents</span>
-            </NavLink>
-            <NavLink to="/admin/marks" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Award size={19} />
+            <NavLink
+              to="/admin/marks"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Award size={18} />
               <span>Marks</span>
             </NavLink>
-            <NavLink to="/admin/attendance" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <CalendarCheck size={19} />
-              <span>Attendance</span>
-            </NavLink>
-            <NavLink to="/admin/fees" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <DollarSign size={19} />
+            <NavLink
+              to="/admin/fees"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <DollarSign size={18} />
               <span>Billing</span>
             </NavLink>
-            <NavLink to="/admin/homework" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <ClipboardList size={19} />
-              <span>Homework</span>
+            <NavLink
+              to="/admin/leave"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <FileText size={18} />
+              <span>Leave Records</span>
             </NavLink>
-            <NavLink to="/admin/holidays" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Palmtree size={19} />
-              <span>Holidays</span>
+            <NavLink
+              to="/admin/leave-reasons"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <BookMarked size={18} />
+              <span>Leave Reasons</span>
             </NavLink>
-            <NavLink to="/admin/leave" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <FileText size={19} />
-              <span>Leave Requests</span>
-            </NavLink>
-            <NavLink to="/admin/import-export" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <FileSpreadsheet size={19} />
-              <span>Import / Export</span>
-            </NavLink>
-            <NavLink to="/admin/notifications" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Bell size={19} />
+            <NavLink
+              to="/admin/notifications"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Bell size={18} />
               <span>Notifications</span>
             </NavLink>
           </>
@@ -90,15 +119,22 @@ export const Sidebar = () => {
 
         {isTeacher && (
           <>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', padding: '0.5rem 0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
-              Teacher Portal
-            </div>
-            <NavLink to="/teacher" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <LayoutDashboard size={19} />
+            <div className="sidebar-section-title">Teacher Portal</div>
+            <NavLink
+              to="/teacher"
+              end
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <LayoutDashboard size={18} />
               <span>Attendance & Homework</span>
             </NavLink>
-            <NavLink to="/teacher/marks" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Award size={19} />
+            <NavLink
+              to="/teacher/marks"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <Award size={18} />
               <span>Marks</span>
             </NavLink>
           </>
@@ -106,11 +142,14 @@ export const Sidebar = () => {
 
         {isParent && (
           <>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', padding: '0.5rem 0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
-              Parent Portal
-            </div>
-            <NavLink to="/parent" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <LayoutDashboard size={19} />
+            <div className="sidebar-section-title">Parent Portal</div>
+            <NavLink
+              to="/parent"
+              end
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <LayoutDashboard size={18} />
               <span>Student Overview</span>
             </NavLink>
           </>
@@ -119,26 +158,38 @@ export const Sidebar = () => {
 
       {/* Footer Profile & Logout */}
       <div className="sidebar-footer">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
           <div
             style={{
-              width: '32px',
-              height: '32px',
+              width: '30px',
+              height: '30px',
               borderRadius: '50%',
               backgroundColor: '#312e81',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               fontWeight: '700',
-              color: '#818cf8',
+              color: '#a5b4fc',
+              flexShrink: 0,
             }}
           >
             {(user?.name?.[0] || user?.username?.[0] || 'U').toUpperCase()}
           </div>
-          <div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f8fafc' }}>{user?.name || user?.username}</div>
-            <div style={{ fontSize: '0.725rem', color: '#94a3b8' }}>{user?.role}</div>
+          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <div
+              style={{
+                fontSize: '0.8125rem',
+                fontWeight: 600,
+                color: '#f8fafc',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {user?.name || user?.username}
+            </div>
+            <div style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>{user?.role}</div>
           </div>
         </div>
         <button
@@ -149,16 +200,16 @@ export const Sidebar = () => {
             border: 'none',
             color: '#94a3b8',
             cursor: 'pointer',
-            padding: '0.4rem',
+            padding: '0.35rem',
             display: 'flex',
             alignItems: 'center',
-            borderRadius: 'var(--radius-sm)',
+            borderRadius: 'var(--radius-xs)',
             transition: 'var(--transition)',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
           onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
         </button>
       </div>
     </aside>

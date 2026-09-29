@@ -2,36 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { studentService } from '../../services/studentService';
-import { attendanceService } from '../../services/attendanceService';
 import { feeService } from '../../services/feeService';
 import { academicService } from '../../services/academicService';
-import { homeworkService } from '../../services/homeworkService';
-import { holidayService } from '../../services/holidayService';
 import { leaveService } from '../../services/leaveService';
 import { notificationService } from '../../services/notificationService';
 import {
   User,
-  CalendarCheck,
   DollarSign,
   Award,
-  CheckCircle,
+  FileText,
+  Bell,
+  CheckCircle2,
   AlertCircle,
   UserX,
-  BookOpen,
-  Palmtree,
-  FileText,
-  Clock,
   Send,
-  Bell,
+  Calendar,
+  Clock,
+  ArrowRight,
+  BookOpen,
 } from 'lucide-react';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: User },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
   { id: 'fees', label: 'Fees', icon: DollarSign },
   { id: 'marks', label: 'Marks', icon: Award },
-  { id: 'homework', label: 'Homework', icon: BookOpen },
-  { id: 'holidays', label: 'Holidays', icon: Palmtree },
   { id: 'leave', label: 'Leave', icon: FileText },
   { id: 'notifications', label: 'Notifications', icon: Bell },
 ];
@@ -42,16 +36,15 @@ export const ParentDashboard = () => {
 
   const [activeTab, setActiveTab] = useState('overview');
   const [child, setChild] = useState(null);
-  const [attendance, setAttendance] = useState([]);
   const [fees, setFees] = useState([]);
   const [marks, setMarks] = useState([]);
-  const [homework, setHomework] = useState([]);
-  const [holidays, setHolidays] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [leaveReasons, setLeaveReasons] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [leaveForm, setLeaveForm] = useState({ startDate: '', endDate: '', reason: '' });
+
+  // Leave form state
+  const [leaveForm, setLeaveForm] = useState({ startDate: '', selectedReasonId: '', customReason: '' });
   const [submittingLeave, setSubmittingLeave] = useState(false);
 
   const parentId = user?.userId;
@@ -68,34 +61,34 @@ export const ParentDashboard = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      let currentClassName = '';
       try {
         const stuRes = await studentService.getStudentById(studentId);
         if (stuRes.success && stuRes.data) {
           setChild(stuRes.data);
-          currentClassName = stuRes.data.className;
         }
       } catch (e) {
         console.error('Student load failed', e);
       }
 
-      const [attRes, feeRes, mrkRes, hwRes, holRes, lvRes, notifRes] = await Promise.allSettled([
-        attendanceService.getAttendanceByStudent(studentId),
+      const [feeRes, mrkRes, lvRes, notifRes] = await Promise.allSettled([
         feeService.getFeesByStudent(studentId),
         academicService.getMarksByStudent(studentId),
-        currentClassName ? homeworkService.getByClass(currentClassName) : Promise.resolve({ data: [] }),
-        holidayService.getAll(),
         leaveService.getMyLeave(),
         notificationService.getMyNotifications(),
       ]);
 
-      if (attRes.status === 'fulfilled' && attRes.value?.data) setAttendance(attRes.value.data);
       if (feeRes.status === 'fulfilled' && feeRes.value?.data) setFees(feeRes.value.data);
       if (mrkRes.status === 'fulfilled' && mrkRes.value?.data) setMarks(mrkRes.value.data);
-      if (hwRes.status === 'fulfilled' && hwRes.value?.data) setHomework(hwRes.value.data || []);
-      if (holRes.status === 'fulfilled' && holRes.value?.data) setHolidays(holRes.value.data || []);
       if (lvRes.status === 'fulfilled' && lvRes.value?.data) setLeaveRequests(lvRes.value.data || []);
       if (notifRes.status === 'fulfilled' && notifRes.value?.data) setNotifications(notifRes.value.data || []);
+
+      // Load active predefined leave reasons
+      try {
+        const reasonRes = await leaveService.getActiveReasons();
+        if (reasonRes.success && reasonRes.data) setLeaveReasons(reasonRes.data);
+      } catch (e) {
+        console.error('Failed to load leave reasons', e);
+      }
     } catch (err) {
       console.error('Failed to load parent overview', err);
     } finally {
@@ -103,38 +96,36 @@ export const ParentDashboard = () => {
     }
   };
 
-  const loadNotifications = async () => {
-    try {
-      setLoadingNotifications(true);
-      const res = await notificationService.getMyNotifications();
-      if (res.success && res.data) setNotifications(res.data);
-    } catch (err) {
-      console.error('Failed to load notifications', err);
-    } finally {
-      setLoadingNotifications(false);
-    }
-  };
-
-  useEffect(() => {
-    if (child?.className) {
-      homeworkService.getByClass(child.className)
-        .then(data => { if (data.success && data.data) setHomework(data.data); })
-        .catch(() => {});
-    }
-  }, [child]);
-
   const handleSubmitLeave = async (e) => {
     e.preventDefault();
-    if (!leaveForm.startDate || !leaveForm.reason) {
-      addToast('Start date and reason are required', 'warning');
+    if (!leaveForm.startDate) {
+      addToast('Start date is required', 'warning');
       return;
     }
+    // Determine final reason text
+    let reasonText = '';
+    if (leaveForm.selectedReasonId === 'OTHER') {
+      if (!leaveForm.customReason.trim()) {
+        addToast('Please enter a custom reason', 'warning');
+        return;
+      }
+      reasonText = leaveForm.customReason.trim();
+    } else if (leaveForm.selectedReasonId) {
+      const found = leaveReasons.find((r) => String(r.id) === String(leaveForm.selectedReasonId));
+      reasonText = found ? `${found.englishReason} / ${found.tamilMeaning}` : '';
+    }
+    if (!reasonText) {
+      addToast('Please select or enter a reason', 'warning');
+      return;
+    }
+
     setSubmittingLeave(true);
     try {
-      const res = await leaveService.submit(leaveForm);
+      const payload = { startDate: leaveForm.startDate, reason: reasonText };
+      const res = await leaveService.submit(payload);
       if (res.success) {
-        addToast('Leave request submitted successfully!', 'success');
-        setLeaveForm({ startDate: '', endDate: '', reason: '' });
+        addToast('Leave submitted successfully!', 'success');
+        setLeaveForm({ startDate: '', selectedReasonId: '', customReason: '' });
         const lvRes = await leaveService.getMyLeave();
         if (lvRes.success && lvRes.data) setLeaveRequests(lvRes.data);
       } else {
@@ -147,17 +138,32 @@ export const ParentDashboard = () => {
     }
   };
 
-  // Computed stats
-  const presentCount = attendance.filter(a => a.status === 'PRESENT').length;
-  const attendanceRate = attendance.length > 0 ? Math.round((presentCount / attendance.length) * 100) : 100;
+  // Computations
+  const totalBilled = fees.reduce((acc, f) => acc + parseFloat(f.totalAmount || 0), 0);
+  const totalPaid = fees.reduce((acc, f) => acc + parseFloat(f.paidAmount || 0), 0);
   const totalPending = fees.reduce((acc, f) => acc + parseFloat(f.pendingAmount || 0), 0);
-  const getChildName = (c) => c?.name || 'Student';
-  const getAdmissionNo = (c) => c?.admissionNumber || 'N/A';
+
+  const gradedMarks = marks.filter((m) => m.marksObtained !== null && m.marksObtained !== undefined && !isNaN(m.marksObtained));
+  const avgScore = gradedMarks.length > 0
+    ? (gradedMarks.reduce((acc, m) => acc + (Number(m.marksObtained) / (Number(m.maxMarks) || 100)) * 100, 0) / gradedMarks.length).toFixed(1)
+    : '—';
+
+  const getChildName = (c) => c?.name || `${c?.firstName || ''} ${c?.lastName || ''}`.trim() || 'Student';
+  const getAdmissionNo = (c) => c?.admissionNumber || c?.rollNumber || 'N/A';
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
 
   if (loading) {
     return (
       <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-        Loading parent dashboard...
+        Loading parent portal...
       </div>
     );
   }
@@ -170,153 +176,318 @@ export const ParentDashboard = () => {
         </div>
         <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
           <UserX size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-          <h3>No Student Associated</h3>
+          <h3>No Student Linked</h3>
           <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            No student record is linked to your account (Parent ID #{parentId}).
+            No student record is linked to your parent account (ID #{parentId}).
           </p>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Please contact the school administrator to link your child's record.
+            Please contact the school administrator to verify your student enrollment.
           </p>
         </div>
       </div>
     );
   }
 
-  const getStatusBadge = (status) => {
-    const map = {
-      PENDING: 'badge-warning',
-      APPROVED: 'badge-success',
-      REJECTED: 'badge-danger',
-    };
-    return map[status] || 'badge-secondary';
-  };
-
   return (
     <div>
-      {/* Page Header */}
-      <div className="page-header">
+      {/* Header */}
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>
           <h1 className="page-title">Parent Portal</h1>
-          <p className="page-subtitle">
-            Viewing: <strong>{getChildName(child)}</strong> | Admission #{getAdmissionNo(child)} | {child.className} – {child.section || 'N/A'}
+          <p className="page-subtitle" style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            Viewing: <strong style={{ color: 'var(--text-main)' }}>{getChildName(child)}</strong> &nbsp;|&nbsp; Admission #{getAdmissionNo(child)} &nbsp;|&nbsp; {child.className} {child.section ? `(${child.section})` : ''}
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0' }}>
+      {/* Navigation Tabs */}
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)' }}>
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              padding: '0.6rem 1rem', border: 'none', cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.65rem 1.1rem',
+              border: 'none',
+              cursor: 'pointer',
               background: activeTab === id ? 'var(--primary)' : 'transparent',
-              color: activeTab === id ? '#fff' : 'var(--text-muted)',
+              color: activeTab === id ? '#ffffff' : 'var(--text-muted)',
               borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
-              fontWeight: activeTab === id ? 600 : 400,
-              fontSize: '0.85rem', transition: 'var(--transition)',
+              fontWeight: activeTab === id ? 600 : 500,
+              fontSize: '0.85rem',
+              transition: 'var(--transition)',
             }}
           >
-            <Icon size={15} /> {label}
+            <Icon size={15} />
+            <span>{label}</span>
           </button>
         ))}
       </div>
 
-      {/* ===== OVERVIEW TAB ===== */}
+      {/* ========================================================================= */}
+      {/* TAB 1: OVERVIEW */}
+      {/* ========================================================================= */}
       {activeTab === 'overview' && (
-        <>
-          <div className="stat-grid">
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Attendance Rate</div>
-                <div className="stat-value">{attendanceRate}%</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{presentCount} / {attendance.length} days</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Top 2-Card Summary: Academic & Fee */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.25rem' }}>
+            {/* Academic Summary Card */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.95rem' }}>
+                  <Award size={16} color="var(--primary)" />
+                  Academic Summary
+                </h3>
+                <span className="badge badge-primary">{gradedMarks.length} Graded</span>
               </div>
-              <div className="stat-icon emerald"><CalendarCheck size={24} /></div>
-            </div>
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Outstanding Dues</div>
-                <div className="stat-value" style={{ color: totalPending > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                  ₹{totalPending.toFixed(2)}
+              <div className="card-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Average Score</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--primary)', marginTop: '2px' }}>
+                      {avgScore !== '—' ? `${avgScore}%` : '—'}
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Exams Evaluated</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
+                      {gradedMarks.length}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{fees.length} fee records</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  <span>Class: {child.className} {child.section ? `• Section ${child.section}` : ''}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('marks')}
+                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.8125rem' }}
+                  >
+                    View Details <ArrowRight size={12} />
+                  </button>
+                </div>
               </div>
-              <div className="stat-icon amber"><DollarSign size={24} /></div>
             </div>
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Exams Graded</div>
-                <div className="stat-value">{marks.length}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Assessments</div>
+
+            {/* Fee Summary Card */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.95rem' }}>
+                  <DollarSign size={16} color="var(--success)" />
+                  Fee Summary
+                </h3>
+                <span className={`badge ${totalPending > 0 ? 'badge-warning' : 'badge-success'}`}>
+                  {totalPending > 0 ? 'Dues Pending' : 'Paid in Full'}
+                </span>
               </div>
-              <div className="stat-icon rose"><Award size={24} /></div>
-            </div>
-            <div className="stat-card">
-              <div>
-                <div className="stat-label">Pending Homework</div>
-                <div className="stat-value">{homework.filter(h => new Date(h.dueDate) >= new Date()).length}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Due upcoming</div>
+              <div className="card-body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Amount Paid</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--success)', marginTop: '2px' }}>
+                      ₹{totalPaid.toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Balance Due</div>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 700, color: totalPending > 0 ? 'var(--danger)' : 'var(--success)', marginTop: '2px' }}>
+                      ₹{totalPending.toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  <span>Total Invoiced: ₹{totalBilled.toLocaleString()}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('fees')}
+                    style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.8125rem' }}
+                  >
+                    View Invoices <ArrowRight size={12} />
+                  </button>
+                </div>
               </div>
-              <div className="stat-icon indigo"><BookOpen size={24} /></div>
             </div>
           </div>
 
-          <div className="card" style={{ marginTop: '1.5rem' }}>
-            <div className="card-header"><h3 className="card-title">Student Profile</h3></div>
+          {/* Student Profile Card */}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title">Student Profile</h3>
+              <span className={`badge ${child.isActive !== false ? 'badge-success' : 'badge-danger'}`}>
+                {child.isActive !== false ? 'ACTIVE STUDENT' : 'INACTIVE'}
+              </span>
+            </div>
             <div className="card-body">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
                 {[
-                  ['Name', getChildName(child)],
-                  ['Admission No', getAdmissionNo(child)],
-                  ['Class', child.className || 'N/A'],
-                  ['Section', child.section || 'N/A'],
-                  ['DOB', child.dateOfBirth || 'N/A'],
-                  ['Gender', child.gender || 'N/A'],
-                  ['Father Name', child.fatherName || 'N/A'],
-                  ['Mother Name', child.motherName || 'N/A'],
-                  ['Guardian Name', child.guardianName || 'N/A'],
-                  ['Mobile', child.contactNumber || child.phoneNumber || 'N/A'],
-                  ['Address', child.address || 'N/A'],
-                  ['Blood Group', child.bloodGroup || 'N/A'],
-                  ['Joining Date', child.joiningDate || 'N/A'],
-                  ['Active Status', child.isActive !== false ? 'Active' : 'Inactive'],
-                ].map(([label, value]) => (
-                  <div key={label} style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>{label}</div>
-                    <div style={{ fontWeight: 600 }}>{value}</div>
+                  ['Student Name', getChildName(child)],
+                  ['Admission Number', getAdmissionNo(child)],
+                  ['Class & Section', `${child.className || '—'} ${child.section ? `(${child.section})` : ''}`],
+                  ['Date of Birth', child.dateOfBirth || '—'],
+                  ['Gender', child.gender || '—'],
+                  ['Blood Group', child.bloodGroup || '—'],
+                  ['Father Name', child.fatherName || '—'],
+                  ['Mother Name', child.motherName || '—'],
+                  ['Parent Mobile', child.contactNumber || child.phoneNumber || child.fatherMobileNumber || '—'],
+                  ['Joining Date', child.joiningDate || '—'],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
+                    <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginBottom: '2px' }}>{label}</div>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)' }}>{val}</div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-        </>
+
+          {/* Recent Marks & Recent Notifications Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
+            {/* Recent Marks Table */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title" style={{ fontSize: '0.95rem' }}>Recent Marks</h3>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('marks')}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}
+                >
+                  All Marks
+                </button>
+              </div>
+              <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Exam</th>
+                      <th>Subject</th>
+                      <th>Score</th>
+                      <th>Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {marks.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)' }}>
+                          No marks published yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      marks.slice(0, 4).map((m, idx) => (
+                        <tr key={m.id || idx}>
+                          <td style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{m.examName}</td>
+                          <td style={{ fontSize: '0.8125rem' }}>{m.subjectName}</td>
+                          <td style={{ fontWeight: 700, fontSize: '0.8125rem' }}>
+                            {m.marksObtained !== null ? `${m.marksObtained} / ${m.maxMarks || 100}` : '—'}
+                          </td>
+                          <td>
+                            <span className="badge badge-primary">{m.grade || '—'}</span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Recent Notifications */}
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title" style={{ fontSize: '0.95rem' }}>Recent Announcements</h3>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('notifications')}
+                  style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}
+                >
+                  All Notices
+                </button>
+              </div>
+              <div style={{ padding: '0.75rem 1.25rem' }}>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: '1.5rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                    No announcements available.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {notifications.slice(0, 3).map((n) => (
+                      <div
+                        key={n.id}
+                        style={{
+                          padding: '0.55rem 0',
+                          borderBottom: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '2px' }}>
+                          <Calendar size={11} /> {formatDate(n.date)}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.4 }}>
+                          {n.message}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* ===== ATTENDANCE TAB ===== */}
-      {activeTab === 'attendance' && (
+      {/* ========================================================================= */}
+      {/* TAB 2: FEES */}
+      {/* ========================================================================= */}
+      {activeTab === 'fees' && (
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title"><CalendarCheck size={18} style={{ marginRight: 6 }} />Attendance Records</h3>
-            <span className="badge badge-success">{attendanceRate}% Rate</span>
+            <div>
+              <h3 className="card-title">Fee Records & Invoices</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                Academic invoices, installments paid, and balance due
+              </p>
+            </div>
+            <span className={`badge ${totalPending > 0 ? 'badge-warning' : 'badge-success'}`}>
+              Outstanding: ₹{totalPending.toLocaleString()}
+            </span>
           </div>
-          <div className="table-container">
+          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
             <table className="table">
               <thead>
-                <tr><th>Date</th><th>Status</th></tr>
+                <tr>
+                  <th>Academic Year</th>
+                  <th>Fee Description</th>
+                  <th>Total Billed</th>
+                  <th>Paid Amount</th>
+                  <th>Outstanding</th>
+                  <th>Due Date</th>
+                  <th style={{ textAlign: 'center' }}>Payment Status</th>
+                </tr>
               </thead>
               <tbody>
-                {attendance.length === 0 ? (
-                  <tr><td colSpan="2" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No attendance records yet.</td></tr>
+                {fees.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                      <DollarSign size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
+                      No billing records found for this student.
+                    </td>
+                  </tr>
                 ) : (
-                  attendance.slice().reverse().map(att => (
-                    <tr key={att.id}>
-                      <td><strong>{att.date}</strong></td>
-                      <td>
-                        <span className={`badge ${att.status === 'PRESENT' ? 'badge-success' : 'badge-danger'}`}>
-                          {att.status === 'PRESENT' ? <CheckCircle size={12} /> : <AlertCircle size={12} />} {att.status}
+                  fees.map((fee) => (
+                    <tr key={fee.id}>
+                      <td style={{ fontWeight: 600 }}>{fee.academicYear || '2026-2027'}</td>
+                      <td>{fee.remarks || fee.feeCategory || 'Tuition & Academic Term Fee'}</td>
+                      <td style={{ fontWeight: 600 }}>₹{Number(fee.totalAmount || 0).toLocaleString()}</td>
+                      <td style={{ color: 'var(--success)', fontWeight: 600 }}>₹{Number(fee.paidAmount || 0).toLocaleString()}</td>
+                      <td style={{ color: Number(fee.pendingAmount || 0) > 0 ? 'var(--danger)' : 'var(--text-main)', fontWeight: 700 }}>
+                        ₹{Number(fee.pendingAmount || 0).toLocaleString()}
+                      </td>
+                      <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                        {formatDate(fee.dueDate)}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={`badge ${Number(fee.pendingAmount || 0) === 0 ? 'badge-success' : Number(fee.paidAmount || 0) > 0 ? 'badge-warning' : 'badge-danger'}`}>
+                          {Number(fee.pendingAmount || 0) === 0 ? 'PAID' : Number(fee.paidAmount || 0) > 0 ? 'PARTIAL' : 'PENDING'}
                         </span>
                       </td>
                     </tr>
@@ -328,76 +499,66 @@ export const ParentDashboard = () => {
         </div>
       )}
 
-      {/* ===== FEES TAB ===== */}
-      {activeTab === 'fees' && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><DollarSign size={18} style={{ marginRight: 6 }} />Fee & Payment Status</h3>
-          </div>
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr><th>Type</th><th>Total</th><th>Paid</th><th>Pending</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {fees.length === 0 ? (
-                  <tr><td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No fee records.</td></tr>
-                ) : (
-                  fees.map(fee => (
-                    <tr key={fee.id}>
-                      <td>{fee.feeType || fee.description || '—'}</td>
-                      <td>₹{parseFloat(fee.totalAmount).toFixed(2)}</td>
-                      <td style={{ color: 'var(--success)' }}>₹{parseFloat(fee.paidAmount).toFixed(2)}</td>
-                      <td style={{ color: parseFloat(fee.pendingAmount) > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
-                        ₹{parseFloat(fee.pendingAmount).toFixed(2)}
-                      </td>
-                      <td><span className={`badge ${fee.status === 'PAID' ? 'badge-success' : fee.status === 'PARTIAL' ? 'badge-warning' : 'badge-danger'}`}>{fee.status}</span></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ===== MARKS TAB ===== */}
+      {/* ========================================================================= */}
+      {/* TAB 3: MARKS */}
+      {/* ========================================================================= */}
       {activeTab === 'marks' && (
         <div className="card">
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="card-title"><Award size={18} style={{ marginRight: 6 }} />Academic Marks & Progress</h3>
-            <span style={{ fontSize: '0.825rem', color: 'var(--text-muted)' }}>{child ? `${child.name} (${child.className || ''} - ${child.section || ''})` : ''}</span>
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">Academic Examination Results</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                Subject-wise examination marks and performance evaluation
+              </p>
+            </div>
+            <span className="badge badge-primary">
+              Average Score: {avgScore !== '—' ? `${avgScore}%` : '—'}
+            </span>
           </div>
-          <div className="table-container">
+          <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Exam</th>
+                  <th>Examination</th>
                   <th>Subject</th>
-                  <th>Marks</th>
-                  <th>Max Marks</th>
+                  <th>Marks Obtained</th>
+                  <th>Maximum Marks</th>
+                  <th>Percentage</th>
                   <th>Grade</th>
-                  <th>Remarks</th>
+                  <th>Teacher Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {marks.length === 0 ? (
-                  <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No assessment results recorded yet.</td></tr>
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                      <Award size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
+                      No examination marks published yet.
+                    </td>
+                  </tr>
                 ) : (
-                  marks.map(m => (
-                    <tr key={m.id}>
-                      <td><span className="badge badge-primary" style={{ fontWeight: 600 }}>{m.examName || (m.examId ? `Exam #${m.examId}` : '—')}</span></td>
-                      <td><strong>{m.subjectName || 'General'}</strong></td>
-                      <td><strong style={{ fontSize: '1rem', color: 'var(--primary)' }}>{m.marksObtained}</strong></td>
-                      <td>{m.maxMarks || 100}</td>
-                      <td>
-                        <span className={`badge ${['A+', 'A'].includes(m.grade) ? 'badge-success' : ['B+', 'B'].includes(m.grade) ? 'badge-primary' : m.grade === 'F' ? 'badge-danger' : 'badge-warning'}`}>
-                          {m.grade || '—'}
-                        </span>
-                      </td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{m.remarks || '—'}</td>
-                    </tr>
-                  ))
+                  marks.map((m, idx) => {
+                    const pct = m.marksObtained !== null && m.maxMarks
+                      ? `${Math.round((Number(m.marksObtained) / Number(m.maxMarks)) * 100)}%`
+                      : '—';
+                    return (
+                      <tr key={m.id || idx}>
+                        <td style={{ fontWeight: 600 }}>{m.examName}</td>
+                        <td>{m.subjectName}</td>
+                        <td style={{ fontWeight: 700, fontSize: '0.925rem' }}>
+                          {m.marksObtained !== null ? m.marksObtained : '—'}
+                        </td>
+                        <td>{m.maxMarks || 100}</td>
+                        <td style={{ fontWeight: 600 }}>{pct}</td>
+                        <td>
+                          <span className={`badge ${['A+', 'A'].includes(m.grade) ? 'badge-success' : ['B+', 'B'].includes(m.grade) ? 'badge-primary' : m.grade === 'F' ? 'badge-danger' : 'badge-warning'}`}>
+                            {m.grade || '—'}
+                          </span>
+                        </td>
+                        <td style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>{m.remarks || '—'}</td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -405,180 +566,176 @@ export const ParentDashboard = () => {
         </div>
       )}
 
-      {/* ===== HOMEWORK TAB ===== */}
-      {activeTab === 'homework' && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><BookOpen size={18} style={{ marginRight: 6 }} />Homework — {child.className}</h3>
-          </div>
-          <div className="card-body">
-            {homework.length === 0 ? (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No homework assigned yet.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {homework.map(hw => (
-                  <div key={hw.id} style={{ padding: '1rem 1.25rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', background: 'var(--bg-main)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                      <strong style={{ fontSize: '0.95rem' }}>{hw.title}</strong>
-                      <span style={{ fontSize: '0.75rem', color: new Date(hw.dueDate) < new Date() ? 'var(--danger)' : 'var(--text-muted)' }}>
-                        <Clock size={12} style={{ marginRight: 4 }} />Due: {hw.dueDate}
-                      </span>
-                    </div>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', margin: 0 }}>{hw.description}</p>
-                    {hw.section && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>Section: {hw.section}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ===== HOLIDAYS TAB ===== */}
-      {activeTab === 'holidays' && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><Palmtree size={18} style={{ marginRight: 6 }} />School Holidays</h3>
-          </div>
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr><th>Date</th><th>Holiday</th><th>Type</th><th>Description</th></tr>
-              </thead>
-              <tbody>
-                {holidays.length === 0 ? (
-                  <tr><td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No holidays scheduled.</td></tr>
-                ) : (
-                  holidays.map(h => (
-                    <tr key={h.id}>
-                      <td><strong>{h.date}</strong></td>
-                      <td>{h.name}</td>
-                      <td><span className={`badge ${h.holidayType === 'PUBLIC' ? 'badge-primary' : 'badge-warning'}`}>{h.holidayType}</span></td>
-                      <td style={{ color: 'var(--text-muted)' }}>{h.description || '—'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ===== LEAVE TAB ===== */}
+      {/* ========================================================================= */}
+      {/* TAB 4: LEAVE */}
+      {/* ========================================================================= */}
       {activeTab === 'leave' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '1.5rem' }}>
-          {/* Submit Leave Form */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Submit Leave Request Card */}
           <div className="card">
             <div className="card-header">
-              <h3 className="card-title"><Send size={18} style={{ marginRight: 6 }} />Submit Leave Request</h3>
+              <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <Send size={15} color="var(--primary)" />
+                Submit Leave Notice
+              </h3>
             </div>
             <div className="card-body">
               <form onSubmit={handleSubmitLeave}>
-                <div className="form-group">
-                  <label className="form-label">Start Date *</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    required
-                    value={leaveForm.startDate}
-                    onChange={e => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">
+                      Leave Date *
+                    </label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={leaveForm.startDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">
+                      Reason for Absence *
+                    </label>
+                    <select
+                      className="form-select"
+                      value={leaveForm.selectedReasonId}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, selectedReasonId: e.target.value })}
+                      required
+                    >
+                      <option value="">-- Select Predefined Reason --</option>
+                      {leaveReasons.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.englishReason} / {r.tamilMeaning}
+                        </option>
+                      ))}
+                      <option value="OTHER">Other Reason (Specify)</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">End Date</label>
-                  <input
-                    type="date"
-                    className="form-input"
-                    value={leaveForm.endDate}
-                    onChange={e => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
-                  />
+
+                {leaveForm.selectedReasonId === 'OTHER' && (
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">
+                      Custom Reason Details *
+                    </label>
+                    <textarea
+                      className="form-textarea"
+                      rows={2}
+                      placeholder="Please specify the reason for student absence..."
+                      value={leaveForm.customReason}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, customReason: e.target.value })}
+                      required
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={submittingLeave}
+                  >
+                    <Send size={14} />
+                    <span>{submittingLeave ? 'Submitting Notice...' : 'Submit Leave Notice'}</span>
+                  </button>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Reason *</label>
-                  <textarea
-                    className="form-textarea"
-                    rows="4"
-                    required
-                    placeholder="Describe the reason for leave..."
-                    value={leaveForm.reason}
-                    onChange={e => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                  />
-                </div>
-                <button type="submit" className="btn btn-primary" disabled={submittingLeave} style={{ width: '100%' }}>
-                  <Send size={16} /> {submittingLeave ? 'Submitting...' : 'Submit Leave Request'}
-                </button>
               </form>
             </div>
           </div>
 
-          {/* Leave History */}
+          {/* Submitted Leave History Table */}
           <div className="card">
             <div className="card-header">
-              <h3 className="card-title"><Clock size={18} style={{ marginRight: 6 }} />My Leave Requests</h3>
+              <h3 className="card-title">Submitted Leave History</h3>
+              <span className="badge badge-secondary">{leaveRequests.length} Records</span>
             </div>
-            <div className="card-body">
-              {leaveRequests.length === 0 ? (
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No leave requests submitted yet.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {leaveRequests.map(lr => (
-                    <div key={lr.id} style={{ padding: '0.875rem 1rem', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', background: 'var(--bg-main)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                        <strong style={{ fontSize: '0.9rem' }}>{lr.startDate} {lr.endDate ? `→ ${lr.endDate}` : ''}</strong>
-                        <span className={`badge ${getStatusBadge(lr.status)}`}>{lr.status}</span>
-                      </div>
-                      <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', margin: '0 0 0.25rem' }}>{lr.reason}</p>
-                      {lr.reviewNote && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Note: {lr.reviewNote}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
+            <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Record #</th>
+                    <th>Leave Date</th>
+                    <th>Reason</th>
+                    <th>Submitted On</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
+                        No leave records submitted yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    leaveRequests.map((req) => (
+                      <tr key={req.id}>
+                        <td><strong>#{req.id}</strong></td>
+                        <td style={{ fontWeight: 600 }}>{req.startDate}</td>
+                        <td style={{ maxWidth: '360px' }}>{req.reason || '—'}</td>
+                        <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                          {formatDate(req.createdAt)}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <span className="badge badge-primary">
+                            RECORDED
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
 
-      {/* Notifications Tab */}
+      {/* ========================================================================= */}
+      {/* TAB 5: NOTIFICATIONS */}
+      {/* ========================================================================= */}
       {activeTab === 'notifications' && (
         <div className="card">
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 className="card-title"><Bell size={18} style={{ marginRight: 6 }} /> School Announcements & Notifications</h3>
-            <button className="btn btn-secondary btn-sm" onClick={loadNotifications} disabled={loadingNotifications}>
-              {loadingNotifications ? 'Refreshing...' : 'Refresh'}
-            </button>
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">School Announcements & Notices</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                Official broadcasts and communications from school administration
+              </p>
+            </div>
+            <span className="badge badge-secondary">{notifications.length} Announcements</span>
           </div>
-          <div className="card-body">
-            {loadingNotifications ? (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Loading notifications...</p>
-            ) : notifications.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-                <Bell size={40} style={{ opacity: 0.3, marginBottom: '0.75rem' }} />
-                <p style={{ margin: 0, fontWeight: 500 }}>No notifications at this time.</p>
+          <div style={{ padding: '1rem 1.25rem' }}>
+            {notifications.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                <Bell size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
+                No announcements published yet.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {notifications.map(n => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {notifications.map((n) => (
                   <div
                     key={n.id}
                     style={{
-                      padding: '1rem 1.25rem',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-md)',
+                      padding: '1rem',
                       background: 'var(--bg-main)',
-                      borderLeft: '4px solid var(--color-primary, #3b82f6)'
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                        {n.date}
-                      </span>
-                      <span className={`badge ${n.audience === 'BOTH' ? 'badge-success' : 'badge-primary'}`}>
-                        {n.audience === 'STUDENTS' ? 'Students' : n.audience === 'BOTH' ? 'All (Students & Teachers)' : n.audience}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                      <span className="badge badge-primary">School Notice</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Calendar size={11} /> {formatDate(n.date)}
                       </span>
                     </div>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-main)', margin: 0, lineHeight: 1.5 }}>
+                    <div style={{ fontSize: '0.875rem', color: 'var(--text-main)', lineHeight: 1.5 }}>
                       {n.message}
-                    </p>
+                    </div>
                   </div>
                 ))}
               </div>

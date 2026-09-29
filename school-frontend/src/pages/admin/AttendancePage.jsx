@@ -90,7 +90,7 @@ export const AttendancePage = () => {
   };
 
   return (
-    <div className="page-container">
+    <div>
       <div style={{ marginBottom: '2rem' }}>
         <h1 className="page-title">Attendance</h1>
         <p className="page-subtitle">Monitor student, teacher, and worker attendance.</p>

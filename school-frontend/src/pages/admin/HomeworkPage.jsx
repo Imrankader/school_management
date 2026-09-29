@@ -116,7 +116,7 @@ export const HomeworkPage = () => {
   const uniqueClasses = Array.from(new Set(homeworkList.map(h => h.className).filter(Boolean))).sort(compareAcademicClasses);
 
   return (
-    <div className="page-container">
+    <div>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <div>
           <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.75rem', fontWeight: 700 }}>

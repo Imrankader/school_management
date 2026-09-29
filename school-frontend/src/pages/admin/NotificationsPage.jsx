@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { notificationService } from '../../services/notificationService';
 import { useToast } from '../../context/ToastContext';
-import { Bell, Send, ChevronDown, Calendar } from 'lucide-react';
+import { Bell, Send, Calendar, Users, CheckCircle2, RefreshCw, Plus } from 'lucide-react';
 
 export const NotificationsPage = () => {
   // Form state
@@ -9,13 +9,17 @@ export const NotificationsPage = () => {
   const [audience, setAudience] = useState('STUDENTS');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [showForm, setShowForm] = useState(true);
 
   // History state
   const [history, setHistory] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const { addToast } = useToast();
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -27,12 +31,9 @@ export const NotificationsPage = () => {
     try {
       setSending(true);
       await notificationService.sendNotification({ date, audience, message: message.trim() });
-      addToast('Notification sent successfully!', 'success');
+      addToast('Notification broadcast sent successfully!', 'success');
       setMessage('');
-      // Refresh history if it's currently shown
-      if (showHistory) {
-        loadHistory();
-      }
+      loadHistory();
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to send notification', 'error');
     } finally {
@@ -54,24 +55,21 @@ export const NotificationsPage = () => {
     }
   };
 
-  const handleToggleHistory = () => {
-    if (!showHistory) {
-      loadHistory();
-    }
-    setShowHistory(!showHistory);
-  };
-
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
   };
 
   const audienceLabel = (val) => {
     switch (val) {
       case 'STUDENTS': return 'Students';
       case 'TEACHERS': return 'Teachers';
-      case 'BOTH': return 'Both';
+      case 'BOTH': return 'All Users (Both)';
       default: return val;
     }
   };
@@ -87,143 +85,183 @@ export const NotificationsPage = () => {
 
   return (
     <div>
-      <div className="page-header">
+      {/* Header */}
+      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
         <div>
-          <h1 className="page-title"><Bell size={22} style={{ marginRight: 8, verticalAlign: 'text-bottom' }} />Notifications</h1>
-          <p className="page-subtitle">Send notifications to Students, Teachers, or Both and view notification history.</p>
+          <h1 className="page-title">Notifications</h1>
+          <p className="page-subtitle">
+            Create, schedule, and broadcast school-wide announcements and communications.
+          </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={loadHistory}
+            disabled={loadingHistory}
+            title="Refresh history"
+          >
+            <RefreshCw size={13} className={loadingHistory ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => setShowForm(!showForm)}
+          >
+            <Plus size={14} />
+            <span>{showForm ? 'Hide Form' : 'Create Notification'}</span>
+          </button>
         </div>
       </div>
 
-      {/* Send Notification Form */}
-      <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <div className="card-header">
-          <h3 className="card-title"><Send size={17} style={{ marginRight: 6 }} /> Send New Notification</h3>
-        </div>
-        <div className="card-body" style={{ padding: '1.5rem' }}>
-          <form onSubmit={handleSend}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
-              {/* Date Picker */}
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 600, marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <Calendar size={14} /> Date
+      {/* Broadcast Notification Form */}
+      {showForm && (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <div className="card-header">
+            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Send size={15} color="var(--primary)" />
+              Create Announcement / Notification
+            </h3>
+          </div>
+          <div className="card-body">
+            <form onSubmit={handleSend}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                {/* Target Audience */}
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">
+                    Target Audience *
+                  </label>
+                  <select
+                    className="form-select"
+                    value={audience}
+                    onChange={(e) => setAudience(e.target.value)}
+                    required
+                  >
+                    <option value="STUDENTS">Students & Parents</option>
+                    <option value="TEACHERS">Teaching Faculty</option>
+                    <option value="BOTH">All Audiences (Both)</option>
+                  </select>
+                </div>
+
+                {/* Broadcast Date */}
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">
+                    Effective Date *
+                  </label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Message Field */}
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label className="form-label">
+                  Notification Message *
                 </label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                <textarea
+                  className="form-textarea"
+                  rows={3}
+                  placeholder="Type announcement message to broadcast..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
                   required
                 />
               </div>
 
-              {/* Send To Dropdown */}
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 600, marginBottom: '0.4rem' }}>
-                  Send To
-                </label>
-                <select
-                  className="form-select"
-                  value={audience}
-                  onChange={(e) => setAudience(e.target.value)}
-                  required
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setMessage('')}
                 >
-                  <option value="STUDENTS">Students</option>
-                  <option value="TEACHERS">Teachers</option>
-                  <option value="BOTH">Both</option>
-                </select>
+                  Clear
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={sending}
+                >
+                  <Send size={14} />
+                  <span>{sending ? 'Broadcasting...' : 'Broadcast Notification'}</span>
+                </button>
               </div>
-            </div>
-
-            {/* Message Textarea */}
-            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-              <label className="form-label" style={{ fontWeight: 600, marginBottom: '0.4rem' }}>
-                Message
-              </label>
-              <textarea
-                className="form-input"
-                rows={4}
-                placeholder="Enter notification message..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                required
-                style={{ resize: 'vertical' }}
-              />
-            </div>
-
-            {/* Buttons */}
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={sending}
-              >
-                <Send size={15} /> {sending ? 'Sending...' : 'Send Notification'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleToggleHistory}
-              >
-                <ChevronDown size={15} style={{ transform: showHistory ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s' }} /> {showHistory ? 'Hide Summary' : 'View Summary'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      {/* Notification History */}
-      {showHistory && (
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title"><Bell size={17} style={{ marginRight: 6 }} /> Notification History</h3>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {history.length} notification{history.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Sent To</th>
-                  <th>Message</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingHistory ? (
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                      Loading notification history...
-                    </td>
-                  </tr>
-                ) : history.length === 0 ? (
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                      No notifications sent yet.
-                    </td>
-                  </tr>
-                ) : (
-                  history.map((n) => (
-                    <tr key={n.id}>
-                      <td><strong>{formatDate(n.date)}</strong></td>
-                      <td>
-                        <span className={`badge ${audienceBadgeClass(n.audience)}`}>
-                          {audienceLabel(n.audience)}
-                        </span>
-                      </td>
-                      <td style={{ maxWidth: '400px' }}>{n.message}</td>
-                      <td>
-                        <span className="badge badge-success">{n.status}</span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            </form>
           </div>
         </div>
       )}
+
+      {/* Notification History Table */}
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <h3 className="card-title">Broadcast History</h3>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+              Audit log of previously broadcast communications
+            </p>
+          </div>
+          <span className="badge badge-secondary">
+            {history.length} Notification{history.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div className="table-container" style={{ border: 'none', borderRadius: 0 }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th style={{ width: '130px' }}>Date</th>
+                <th style={{ width: '160px' }}>Target Audience</th>
+                <th>Message Content</th>
+                <th style={{ width: '120px', textAlign: 'center' }}>Delivery Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingHistory ? (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
+                    Loading communications history...
+                  </td>
+                </tr>
+              ) : history.length === 0 ? (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                    <Bell size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
+                    <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      No notifications sent yet.
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                history.map((n) => (
+                  <tr key={n.id}>
+                    <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                      {formatDate(n.date)}
+                    </td>
+                    <td>
+                      <span className={`badge ${audienceBadgeClass(n.audience)}`}>
+                        {audienceLabel(n.audience)}
+                      </span>
+                    </td>
+                    <td style={{ maxWidth: '480px', lineHeight: 1.45, color: 'var(--text-main)' }}>
+                      {n.message}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="badge badge-success">
+                        <CheckCircle2 size={11} />
+                        {n.status || 'DELIVERED'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 };
