@@ -127,7 +127,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >
               <LayoutDashboard size={18} />
-              <span>Attendance & Homework</span>
+              <span>Dashboard & Homework</span>
             </NavLink>
             <NavLink
               to="/teacher/marks"
