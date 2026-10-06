@@ -1,0 +1,79 @@
+# Runs the whole backend on one machine. Database is external (e.g. Neon), set in .env.
+x-common: &common
+  restart: unless-stopped
+  environment: &common-env
+    EUREKA_URL: http://service-registry:8761/eureka/
+    EUREKA_PREFER_IP: "false"
+    DB_PASSWORD: ${DB_PASSWORD}
+    JWT_SECRET: ${JWT_SECRET}
+    CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+
+services:
+  service-registry:
+    <<: *common
+    build: { context: ., args: { MODULE: service-registry } }
+    environment:
+      EUREKA_HOSTNAME: service-registry
+
+  api-gateway:
+    <<: *common
+    build: { context: ., args: { MODULE: api-gateway } }
+    depends_on: [service-registry]
+    ports: ["8080:8080"]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: api-gateway
+
+  auth-service:
+    <<: *common
+    build: { context: ., args: { MODULE: auth-service } }
+    depends_on: [service-registry]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: auth-service
+      AUTH_DB_URL: ${AUTH_DB_URL}
+
+  student-service:
+    <<: *common
+    build: { context: ., args: { MODULE: student-service } }
+    depends_on: [service-registry]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: student-service
+      STUDENT_DB_URL: ${STUDENT_DB_URL}
+
+  academic-service:
+    <<: *common
+    build: { context: ., args: { MODULE: academic-service } }
+    depends_on: [service-registry]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: academic-service
+      ACADEMIC_DB_URL: ${ACADEMIC_DB_URL}
+
+  attendance-service:
+    <<: *common
+    build: { context: ., args: { MODULE: attendance-service } }
+    depends_on: [service-registry]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: attendance-service
+      ATTENDANCE_DB_URL: ${ATTENDANCE_DB_URL}
+
+  fee-service:
+    <<: *common
+    build: { context: ., args: { MODULE: fee-service } }
+    depends_on: [service-registry]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: fee-service
+      FEE_DB_URL: ${FEE_DB_URL}
+
+  notification-service:
+    <<: *common
+    build: { context: ., args: { MODULE: notification-service } }
+    depends_on: [service-registry]
+    environment:
+      <<: *common-env
+      EUREKA_HOSTNAME: notification-service
+      NOTIFICATION_DB_URL: ${NOTIFICATION_DB_URL}

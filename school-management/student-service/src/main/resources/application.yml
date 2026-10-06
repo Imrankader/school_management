@@ -5,9 +5,9 @@ spring:
   application:
     name: STUDENT-SERVICE
   datasource:
-    url: jdbc:postgresql://localhost:5432/sms_student_db
+    url: ${STUDENT_DB_URL:jdbc:postgresql://localhost:5432/sms_student_db}
     username: ${DB_USERNAME:postgres}
-    password: Abder@2002
+    password: ${DB_PASSWORD:Abder@2002}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 30000
@@ -30,13 +30,13 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
     fetch-registry: true
     register-with-eureka: true
   instance:
-    prefer-ip-address: true
+    prefer-ip-address: ${EUREKA_PREFER_IP:true}
     ip-address: 127.0.0.1
-    hostname: localhost
+    hostname: ${EUREKA_HOSTNAME:localhost}
     lease-renewal-interval-in-seconds: 5
     lease-expiration-duration-in-seconds: 10
 
