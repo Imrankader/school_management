@@ -3,6 +3,7 @@ package com.school.auth.config;
 import com.school.auth.entity.User;
 import com.school.auth.repository.UserRepository;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
@@ -10,10 +11,12 @@ import org.slf4j.LoggerFactory;
 import com.school.common.enums.Role;
 
 /**
- * Seeds demo users on startup. Only sets password/name/role — never overwrites
+ * Seeds demo users on startup. Disabled unless app.seed-demo-users=true (SEED_DEMO_USERS env).
+ * Only sets password/name/role — never overwrites
  * studentId so that any previously assigned parent-student link is preserved.
  */
 @Component
+@ConditionalOnProperty(name = "app.seed-demo-users", havingValue = "true")
 public class DataSeeder implements CommandLineRunner {
 
     private static final Logger logger = LoggerFactory.getLogger(DataSeeder.class);

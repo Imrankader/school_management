@@ -29,14 +29,14 @@ export const Login = () => {
       if (cleanEmail.toLowerCase() === 'teacher') cleanEmail = 'teacher@school.com';
       if (cleanEmail.toLowerCase() === 'parent') cleanEmail = 'parent@school.com';
 
-      // Auto-correct common case variations for demo accounts
-      if (cleanEmail.toLowerCase() === 'admin@school.com' && (cleanPassword.toLowerCase() === 'admin123' || cleanPassword.toLowerCase() === 'admin')) {
+      // Auto-correct common case variations for demo accounts (dev builds only)
+      if (import.meta.env.DEV && cleanEmail.toLowerCase() === 'admin@school.com' && (cleanPassword.toLowerCase() === 'admin123' || cleanPassword.toLowerCase() === 'admin')) {
         cleanPassword = 'Admin@123';
       }
-      if (cleanEmail.toLowerCase() === 'teacher@school.com' && (cleanPassword.toLowerCase() === 'teacher123' || cleanPassword.toLowerCase() === 'teacher')) {
+      if (import.meta.env.DEV && cleanEmail.toLowerCase() === 'teacher@school.com' && (cleanPassword.toLowerCase() === 'teacher123' || cleanPassword.toLowerCase() === 'teacher')) {
         cleanPassword = 'Teacher@123';
       }
-      if (cleanEmail.toLowerCase() === 'parent@school.com' && (cleanPassword.toLowerCase() === 'parent123' || cleanPassword.toLowerCase() === 'parent')) {
+      if (import.meta.env.DEV && cleanEmail.toLowerCase() === 'parent@school.com' && (cleanPassword.toLowerCase() === 'parent123' || cleanPassword.toLowerCase() === 'parent')) {
         cleanPassword = 'Parent@123';
       }
 
@@ -291,7 +291,8 @@ export const Login = () => {
           </button>
         </form>
 
-        {/* Demo Quick-Fill Credentials */}
+        {/* Demo Quick-Fill Credentials (dev builds only, never shown in production) */}
+        {import.meta.env.DEV && (
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem', marginTop: '0.5rem' }}>
           <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Quick Demo Login
@@ -326,6 +327,7 @@ export const Login = () => {
             Demo Passwords: <code>Admin@123</code> &bull; <code>Teacher@123</code> &bull; <code>Parent@123</code>
           </div>
         </div>
+        )}
 
         {/* Footer Link */}
         <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>

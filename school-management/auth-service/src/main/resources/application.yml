@@ -40,6 +40,9 @@ eureka:
     lease-renewal-interval-in-seconds: 5
     lease-expiration-duration-in-seconds: 10
 
+app:
+  seed-demo-users: ${SEED_DEMO_USERS:false}
+
 jwt:
   secret: ${JWT_SECRET:SchoolManagementSystemSecretKey2024SuperSecretKeyForJWTTokenGeneration}
   expiration: 86400000  # 24 hours in ms
