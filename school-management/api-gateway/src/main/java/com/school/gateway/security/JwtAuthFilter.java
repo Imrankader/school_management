@@ -20,15 +20,14 @@ import java.util.List;
 
 /**
  * Rejects /api/** requests that do not carry a valid JWT (issued by Auth Service).
- * Login/register endpoints and CORS preflight requests are let through.
+ * Login endpoints and CORS preflight requests are let through.
  */
 @Component
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final List<String> PUBLIC_PATHS = List.of(
             "/api/auth/login",
-            "/api/auth/parent-login",
-            "/api/auth/register"
+            "/api/auth/parent-login"
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

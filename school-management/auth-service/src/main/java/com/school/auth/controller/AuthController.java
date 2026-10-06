@@ -4,11 +4,13 @@ import com.school.auth.dto.AuthResponse;
 import com.school.auth.dto.LoginRequest;
 import com.school.auth.dto.RegisterRequest;
 import com.school.auth.dto.UserSummaryDTO;
+import com.school.auth.security.JwtUtil;
 import com.school.auth.service.UserService;
 import com.school.common.dto.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,12 +25,18 @@ import java.util.List;
 public class AuthController {
 
     private final UserService userService;
+    private final JwtUtil jwtUtil;
 
     /**
-     * POST /api/auth/register — Register a new user (generic, for any role).
+     * POST /api/auth/register — Create a new user (any role). Only an ADMIN may call this.
      */
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<ApiResponse<AuthResponse>> register(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @Valid @RequestBody RegisterRequest request) {
+        if (!isAdmin(authHeader)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         AuthResponse authResponse = userService.register(request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -74,5 +82,17 @@ public class AuthController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Parent account created and linked to student", authResponse));
+    }
+
+    private boolean isAdmin(String authHeader) {
+        if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
+            return false;
+        }
+        try {
+            String token = authHeader.substring(7);
+            return jwtUtil.validateToken(token) && "ADMIN".equals(jwtUtil.getRoleFromToken(token));
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
