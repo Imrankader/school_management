@@ -4,11 +4,25 @@ x-common: &common
   environment: &common-env
     EUREKA_URL: http://service-registry:8761/eureka/
     EUREKA_PREFER_IP: "false"
+    DB_USERNAME: ${DB_USERNAME}
     DB_PASSWORD: ${DB_PASSWORD}
     JWT_SECRET: ${JWT_SECRET}
     CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
 
 services:
+  # Public HTTPS entry point. Caddy gets a free Let's Encrypt cert for API_DOMAIN and forwards to the gateway.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api-gateway]
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
   service-registry:
     <<: *common
     build: { context: ., args: { MODULE: service-registry } }
@@ -19,7 +33,7 @@ services:
     <<: *common
     build: { context: ., args: { MODULE: api-gateway } }
     depends_on: [service-registry]
-    ports: ["8080:8080"]
+    expose: ["8080"]
     environment:
       <<: *common-env
       EUREKA_HOSTNAME: api-gateway
@@ -77,3 +91,7 @@ services:
       <<: *common-env
       EUREKA_HOSTNAME: notification-service
       NOTIFICATION_DB_URL: ${NOTIFICATION_DB_URL}
+
+volumes:
+  caddy_data:
+  caddy_config:
