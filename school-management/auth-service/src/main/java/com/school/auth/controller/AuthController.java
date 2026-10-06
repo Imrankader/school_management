@@ -4,13 +4,15 @@ import com.school.auth.dto.AuthResponse;
 import com.school.auth.dto.LoginRequest;
 import com.school.auth.dto.RegisterRequest;
 import com.school.auth.dto.UserSummaryDTO;
-import com.school.auth.security.JwtUtil;
 import com.school.auth.service.UserService;
 import com.school.common.dto.ApiResponse;
+import com.school.common.enums.Role;
+import com.school.common.exception.BadRequestException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.util.StringUtils;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,17 +27,19 @@ import java.util.List;
 public class AuthController {
 
     private final UserService userService;
-    private final JwtUtil jwtUtil;
 
     /**
-     * POST /api/auth/register — Create a new user (any role). Only an ADMIN may call this.
+     * POST /api/auth/register — Create a user.
+     * Public callers may only create PARENT accounts, and those are never linked to a student here
+     * (an administrator links them). An authenticated ADMIN may create any role.
      */
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @Valid @RequestBody RegisterRequest request) {
-        if (!isAdmin(authHeader)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        if (!isAdminCaller()) {
+            if (request.getRole() != Role.PARENT) {
+                throw new BadRequestException("Only PARENT accounts can be self-registered. An administrator must create other accounts.");
+            }
+            request.setStudentId(null);
         }
         AuthResponse authResponse = userService.register(request);
         return ResponseEntity
@@ -84,15 +88,10 @@ public class AuthController {
                 .body(ApiResponse.success("Parent account created and linked to student", authResponse));
     }
 
-    private boolean isAdmin(String authHeader) {
-        if (!StringUtils.hasText(authHeader) || !authHeader.startsWith("Bearer ")) {
-            return false;
-        }
-        try {
-            String token = authHeader.substring(7);
-            return jwtUtil.validateToken(token) && "ADMIN".equals(jwtUtil.getRoleFromToken(token));
-        } catch (Exception e) {
-            return false;
-        }
+    private boolean isAdminCaller() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null
+                && authentication.getAuthorities().stream()
+                        .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
     }
 }

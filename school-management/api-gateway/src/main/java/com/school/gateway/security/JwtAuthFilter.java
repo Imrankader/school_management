@@ -27,7 +27,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final List<String> PUBLIC_PATHS = List.of(
             "/api/auth/login",
-            "/api/auth/parent-login"
+            "/api/auth/parent-login",
+            "/api/auth/register"
     );
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();

@@ -7,7 +7,7 @@ spring:
   datasource:
     url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5432/sms_auth_db}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:Abder@2002}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       connection-timeout: 30000
@@ -41,14 +41,13 @@ eureka:
     lease-expiration-duration-in-seconds: 10
 
 app:
-  seed-demo-users: ${SEED_DEMO_USERS:false}
   bootstrap-admin:
     email: ${BOOTSTRAP_ADMIN_EMAIL:}
     password: ${BOOTSTRAP_ADMIN_PASSWORD:}
     name: ${BOOTSTRAP_ADMIN_NAME:School Admin}
 
 jwt:
-  secret: ${JWT_SECRET:SchoolManagementSystemSecretKey2024SuperSecretKeyForJWTTokenGeneration}
+  secret: ${JWT_SECRET}
   expiration: 86400000  # 24 hours in ms
 
 management:

@@ -35,9 +35,11 @@ public class BootstrapAdminRunner implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (!StringUtils.hasText(email) || !StringUtils.hasText(password)) {
+            log.info("Bootstrap admin disabled: BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD not set.");
             return;
         }
         if (!userRepository.findByRole(Role.ADMIN).isEmpty()) {
+            log.info("An ADMIN account already exists; bootstrap admin skipped.");
             return;
         }
         if (password.length() < 8) {
@@ -45,7 +47,8 @@ public class BootstrapAdminRunner implements CommandLineRunner {
             return;
         }
         if (userRepository.existsByEmail(email)) {
-            log.warn("Bootstrap admin email {} already exists with another role; not created", email);
+            log.error("CONFIGURATION ERROR: BOOTSTRAP_ADMIN_EMAIL belongs to an existing non-admin user. "
+                    + "No admin was created and no user was promoted. Operator action required.");
             return;
         }
         User admin = User.builder()
