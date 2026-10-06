@@ -16,8 +16,7 @@ COPY --from=build /build/attendance-service/target/*.jar attendance-service.jar
 COPY --from=build /build/fee-service/target/*.jar fee-service.jar
 COPY --from=build /build/notification-service/target/*.jar notification-service.jar
 COPY --from=build /build/api-gateway/target/*.jar api-gateway.jar
-COPY deploy/huggingface/start.sh /app/start.sh
-RUN chmod +x /app/start.sh && chown -R user /app
+COPY --chmod=755 deploy/huggingface/start.sh /app/start.sh
 USER user
 ENV JAVA_TOOL_OPTIONS="-Xmx400m -Xss512k -XX:+UseSerialGC"
 EXPOSE 7860
