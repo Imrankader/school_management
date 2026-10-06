@@ -25,13 +25,13 @@ services:
 
   service-registry:
     <<: *common
-    build: { context: ., args: { MODULE: service-registry } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: service-registry } }
     environment:
       EUREKA_HOSTNAME: service-registry
 
   api-gateway:
     <<: *common
-    build: { context: ., args: { MODULE: api-gateway } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: api-gateway } }
     depends_on: [service-registry]
     expose: ["8080"]
     environment:
@@ -40,7 +40,7 @@ services:
 
   auth-service:
     <<: *common
-    build: { context: ., args: { MODULE: auth-service } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: auth-service } }
     depends_on: [service-registry]
     environment:
       <<: *common-env
@@ -49,7 +49,7 @@ services:
 
   student-service:
     <<: *common
-    build: { context: ., args: { MODULE: student-service } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: student-service } }
     depends_on: [service-registry]
     environment:
       <<: *common-env
@@ -58,7 +58,7 @@ services:
 
   academic-service:
     <<: *common
-    build: { context: ., args: { MODULE: academic-service } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: academic-service } }
     depends_on: [service-registry]
     environment:
       <<: *common-env
@@ -67,7 +67,7 @@ services:
 
   attendance-service:
     <<: *common
-    build: { context: ., args: { MODULE: attendance-service } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: attendance-service } }
     depends_on: [service-registry]
     environment:
       <<: *common-env
@@ -76,7 +76,7 @@ services:
 
   fee-service:
     <<: *common
-    build: { context: ., args: { MODULE: fee-service } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: fee-service } }
     depends_on: [service-registry]
     environment:
       <<: *common-env
@@ -85,7 +85,7 @@ services:
 
   notification-service:
     <<: *common
-    build: { context: ., args: { MODULE: notification-service } }
+    build: { context: ., dockerfile: Dockerfile.service, args: { MODULE: notification-service } }
     depends_on: [service-registry]
     environment:
       <<: *common-env
