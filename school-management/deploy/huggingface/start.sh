@@ -20,5 +20,5 @@ java -jar /app/fee-service.jar &
 java -jar /app/notification-service.jar &
 for port in 8081 8082 8083 8084 8085 8086; do wait_for_port "$port"; done
 
-export SERVER_PORT=7860
+export SERVER_PORT=${PORT:-7860}
 exec java -jar /app/api-gateway.jar
