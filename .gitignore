@@ -1,6 +1,10 @@
 # Frontend - Node/Vite
 school-frontend/node_modules/
 school-frontend/dist/
+# package-lock.json generated on Windows has corrupted entries for Linux-only optional
+# rollup native binaries (missing "version", breaks `npm install` on Vercel/Linux).
+# Let each environment generate its own lockfile instead of committing a broken one.
+school-frontend/package-lock.json
 
 # Backend - Maven/Java
 school-management/**/target/
