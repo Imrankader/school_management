@@ -18,6 +18,6 @@ COPY --from=build /build/notification-service/target/*.jar notification-service.
 COPY --from=build /build/api-gateway/target/*.jar api-gateway.jar
 COPY --chmod=755 deploy/huggingface/start.sh /app/start.sh
 USER user
-ENV JAVA_TOOL_OPTIONS="-Xmx400m -Xss512k -XX:+UseSerialGC"
+ENV JAVA_TOOL_OPTIONS="-Xmx512m -Xss512k -XX:+UseSerialGC"
 EXPOSE 7860
 CMD ["/app/start.sh"]
