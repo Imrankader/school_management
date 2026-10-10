@@ -147,7 +147,9 @@ export const ParentDashboard = () => {
   const totalPaid = fees.reduce((acc, f) => acc + parseFloat(f.paidAmount || 0), 0);
   const totalPending = fees.reduce((acc, f) => acc + parseFloat(f.pendingAmount || 0), 0);
 
-  const gradedMarks = marks.filter((m) => m.marksObtained !== null && m.marksObtained !== undefined && !isNaN(m.marksObtained));
+  // Absent entries (grade "AB") are stored with 0 marks; they must not pull the average down
+  const gradedMarks = marks.filter((m) => m.grade !== 'AB' && m.marksObtained !== null && m.marksObtained !== undefined && !isNaN(m.marksObtained));
+  const examsEvaluated = new Set(gradedMarks.map((m) => m.examName || m.examId)).size;
   const avgScore = gradedMarks.length > 0
     ? (gradedMarks.reduce((acc, m) => acc + (Number(m.marksObtained) / (Number(m.maxMarks) || 100)) * 100, 0) / gradedMarks.length).toFixed(1)
     : '—';
@@ -258,7 +260,7 @@ export const ParentDashboard = () => {
                   <div style={{ padding: '0.75rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)' }}>
                     <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Exams Evaluated</div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
-                      {gradedMarks.length}
+                      {examsEvaluated}
                     </div>
                   </div>
                 </div>

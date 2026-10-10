@@ -825,7 +825,7 @@ export const FeesPage = () => {
                     Collection Summary
                   </span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {financialOverview.totalStudents} Active Students Billed
+                    {financialOverview.totalStudents} Active Students
                   </span>
                 </div>
 

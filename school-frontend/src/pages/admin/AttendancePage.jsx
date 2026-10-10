@@ -30,7 +30,7 @@ export const AttendancePage = () => {
 
   const loadClasses = async () => {
     try {
-      const res = await api.get('/api/academics/classes');
+      const res = await api.get('/api/academic/classes');
       if (res.data?.success && res.data?.data) {
         setClasses(res.data.data);
       }

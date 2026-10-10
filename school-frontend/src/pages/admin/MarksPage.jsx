@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { CLASS_CONFIG, toDisplayClassName, compareAcademicClasses } from '../../utils/academicClassOrder';
 
+const BULK_SUBJECTS_STORAGE_KEY = 'marks.bulkTemplateSubjectIds';
+
 export const MarksPage = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { addToast } = useToast();
@@ -64,11 +66,17 @@ export const MarksPage = () => {
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Tab 3: Bulk Upload State
-  const [bulkMode, setBulkMode] = useState('WHOLE_SCHOOL'); // 'WHOLE_SCHOOL' | 'CLASS_WISE'
-  const [bulkClass, setBulkClass] = useState('');
-  const [bulkSection, setBulkSection] = useState('A');
+  const [bulkClass, setBulkClass] = useState(''); // '' = all classes
   const [bulkExam, setBulkExam] = useState('');
-  const [bulkSubject, setBulkSubject] = useState('');
+  const [bulkSubjectIds, setBulkSubjectIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BULK_SUBJECTS_STORAGE_KEY) || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
@@ -189,8 +197,7 @@ export const MarksPage = () => {
       setLoadingStudents(true);
       setStudentFetchError(null);
 
-      const stuRes = await studentService.getAllStudents({ pageSize: 1000 });
-      console.log('Student API response in MarksPage:', stuRes);
+      const stuRes = await studentService.getAllStudents({ page: 1, pageSize: 10000, status: 'Active' });
 
       let rawStudents = [];
       if (Array.isArray(stuRes)) {
@@ -457,16 +464,41 @@ export const MarksPage = () => {
   };
 
   // Tab 3: Bulk Upload Handlers
+  // Subject columns of the template, kept in the Subjects master order
+  const bulkSubjects = subjects.filter(sub => bulkSubjectIds.includes(sub.id));
+
+  const toggleBulkSubject = (subjectId) => {
+    setBulkSubjectIds(prev => {
+      const next = prev.includes(subjectId) ? prev.filter(id => id !== subjectId) : [...prev, subjectId];
+      try {
+        localStorage.setItem(BULK_SUBJECTS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // remembering the selection is a convenience only
+      }
+      return next;
+    });
+  };
+
   const handleDownloadTemplate = async () => {
+    if (bulkSubjects.length === 0) {
+      addToast('Select at least one subject for the template', 'warning');
+      return;
+    }
     try {
-      const response = await marksService.downloadTemplate(bulkMode);
+      setDownloadingTemplate(true);
+      const response = await marksService.downloadTemplate({
+        className: bulkClass,
+        subjectIds: bulkSubjects.map(sub => sub.id),
+        examName: bulkExam,
+      });
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', bulkMode === 'WHOLE_SCHOOL' ? 'marks_whole_school_template.xlsx' : 'marks_classwise_template.xlsx');
+      const classPart = bulkClass ? toDisplayClassName(bulkClass).replace(/\s+/g, '_') : 'All_Classes';
+      link.setAttribute('download', `Mark_${classPart}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -475,6 +507,8 @@ export const MarksPage = () => {
     } catch (err) {
       console.error('Download template error:', err);
       addToast('Failed to download template', 'error');
+    } finally {
+      setDownloadingTemplate(false);
     }
   };
 
@@ -484,36 +518,25 @@ export const MarksPage = () => {
       addToast('Please select an Excel file (.xlsx or .xls) to upload', 'warning');
       return;
     }
-
-    if (bulkMode === 'CLASS_WISE') {
-      if (!bulkClass || !bulkSection || !bulkExam || !bulkSubject) {
-        addToast('Please select Class, Section, Exam, and Subject for Class-Wise upload', 'warning');
-        return;
-      }
+    if (!bulkExam) {
+      addToast('Please select the exam these marks belong to', 'warning');
+      return;
     }
 
     const formData = new FormData();
     formData.append('file', selectedFile);
 
-    const params = {
-      mode: bulkMode,
-      ...(bulkMode === 'CLASS_WISE' && {
-        className: bulkClass,
-        section: bulkSection,
-        examName: bulkExam,
-        subjectName: bulkSubject,
-      })
-    };
-
     try {
       setUploading(true);
       setUploadResult(null);
-      const res = await marksService.bulkUpload(formData, params);
+      const res = await marksService.bulkUpload(formData, { examName: bulkExam });
       setUploadResult(res?.data || null);
       if (res?.data?.successfulRows > 0 || res?.data?.updatedRows > 0) {
-        addToast(`Upload processed! Successful: ${res.data.successfulRows}, Updated: ${res.data.updatedRows}`, 'success');
-      } else {
+        addToast(`Upload processed! Marks added: ${res.data.successfulRows}, updated: ${res.data.updatedRows}`, 'success');
+      } else if (res?.data?.failedRows > 0) {
         addToast('Upload finished with errors. Please check the report below.', 'warning');
+      } else {
+        addToast('No marks found in the sheet.', 'warning');
       }
     } catch (err) {
       console.error('Bulk upload error:', err);
@@ -525,13 +548,12 @@ export const MarksPage = () => {
 
   const handleDownloadErrorReport = () => {
     if (!uploadResult?.errors || uploadResult.errors.length === 0) return;
-    const headers = ['Row', 'Student Name', 'Admission No', 'Class', 'Section', 'Subject', 'Exam', 'Issue', 'Details'];
+    const headers = ['Row', 'Student Name', 'Mobile', 'Class', 'Subject', 'Exam', 'Issue', 'Details'];
     const rows = uploadResult.errors.map(err => [
       err.rowNumber,
       `"${(err.studentName || '').replace(/"/g, '""')}"`,
-      `"${(err.admissionNumber || '').replace(/"/g, '""')}"`,
+      `"${(err.mobile || '').replace(/"/g, '""')}"`,
       `"${(err.className || '').replace(/"/g, '""')}"`,
-      `"${(err.section || '').replace(/"/g, '""')}"`,
       `"${(err.subjectName || '').replace(/"/g, '""')}"`,
       `"${(err.examName || '').replace(/"/g, '""')}"`,
       `"${(err.issue || '').replace(/"/g, '""')}"`,
@@ -1208,7 +1230,7 @@ export const MarksPage = () => {
       {/* ========================================================================= */}
       {activeTab === 'bulk' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Instructions and Mode Selection Card */}
+          {/* Instructions and Template Options Card */}
           <div className="card" style={{ padding: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
               <div>
@@ -1216,7 +1238,7 @@ export const MarksPage = () => {
                   Bulk Marks Upload
                 </h3>
                 <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                  Upload Excel spreadsheets with student marks. Supported modes: Class-Wise or Whole-School Mixed-Class.
+                  One row per student, one column per subject. Download the mark sheet, fill in the marks, then upload it for the selected exam.
                 </p>
               </div>
 
@@ -1224,109 +1246,16 @@ export const MarksPage = () => {
                 type="button"
                 className="btn btn-secondary"
                 onClick={handleDownloadTemplate}
+                disabled={downloadingTemplate || bulkSubjects.length === 0}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
               >
                 <Download size={16} />
-                Download Excel Template ({bulkMode === 'WHOLE_SCHOOL' ? 'Whole School' : 'Class-Wise'})
+                {downloadingTemplate ? 'Preparing...' : 'Download Mark Sheet Template'}
               </button>
             </div>
 
-            {/* Mode Selector */}
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  padding: '0.85rem 1.25rem',
-                  border: `2px solid ${bulkMode === 'WHOLE_SCHOOL' ? 'var(--primary)' : 'var(--border-color)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  background: bulkMode === 'WHOLE_SCHOOL' ? 'rgba(79, 70, 229, 0.05)' : 'var(--bg-main)',
-                  cursor: 'pointer',
-                  flex: 1,
-                  minWidth: '260px',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="bulkMode"
-                  value="WHOLE_SCHOOL"
-                  checked={bulkMode === 'WHOLE_SCHOOL'}
-                  onChange={() => setBulkMode('WHOLE_SCHOOL')}
-                  style={{ accentColor: 'var(--primary)' }}
-                />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>
-                    Mode 2: Whole-School Mixed-Class Upload (Recommended)
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Single file containing multiple classes, sections, subjects, and exams. System auto-routes each row.
-                  </div>
-                </div>
-              </label>
-
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  padding: '0.85rem 1.25rem',
-                  border: `2px solid ${bulkMode === 'CLASS_WISE' ? 'var(--primary)' : 'var(--border-color)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  background: bulkMode === 'CLASS_WISE' ? 'rgba(79, 70, 229, 0.05)' : 'var(--bg-main)',
-                  cursor: 'pointer',
-                  flex: 1,
-                  minWidth: '260px',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="bulkMode"
-                  value="CLASS_WISE"
-                  checked={bulkMode === 'CLASS_WISE'}
-                  onChange={() => setBulkMode('CLASS_WISE')}
-                  style={{ accentColor: 'var(--primary)' }}
-                />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>
-                    Mode 1: Class-Wise Bulk Upload
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Upload marks for one specific class, section, exam, and subject.
-                  </div>
-                </div>
-              </label>
-            </div>
-
-            {/* Class-wise selector filters */}
-            {bulkMode === 'CLASS_WISE' && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', padding: '1rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', border: '1px solid var(--border-color)' }}>
-                <div>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Target Class *</label>
-                  <select
-                    className="form-control"
-                    value={bulkClass}
-                    onChange={(e) => setBulkClass(e.target.value)}
-                  >
-                    <option value="">Select Class</option>
-                    {classes.map(c => (
-                      <option key={c} value={c}>{toDisplayClassName(c)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Section *</label>
-                  <select
-                    className="form-control"
-                    value={bulkSection}
-                    onChange={(e) => setBulkSection(e.target.value)}
-                  >
-                    <option value="A">Section A</option>
-                    <option value="B">Section B</option>
-                    <option value="C">Section C</option>
-                    <option value="D">Section D</option>
-                  </select>
-                </div>
+            <div style={{ padding: '1rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                   <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Exam *</label>
                   <select
@@ -1341,20 +1270,63 @@ export const MarksPage = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Subject *</label>
+                  <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>Class (for template)</label>
                   <select
                     className="form-control"
-                    value={bulkSubject}
-                    onChange={(e) => setBulkSubject(e.target.value)}
+                    value={bulkClass}
+                    onChange={(e) => setBulkClass(e.target.value)}
                   >
-                    <option value="">Select Subject</option>
-                    {subjects.map(s => (
-                      <option key={s.id} value={s.name}>{s.name}</option>
+                    <option value="">All Classes</option>
+                    {classes.map(c => (
+                      <option key={c} value={c}>{toDisplayClassName(c)}</option>
                     ))}
                   </select>
                 </div>
               </div>
-            )}
+
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '0.825rem' }}>
+                Subjects in the template * ({bulkSubjects.length} selected)
+              </label>
+              {subjects.length === 0 ? (
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  No subjects configured yet. Add subjects in the configuration tab first.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  {subjects.map(sub => {
+                    const checked = bulkSubjectIds.includes(sub.id);
+                    return (
+                      <label
+                        key={sub.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                          padding: '0.4rem 0.75rem',
+                          border: `1px solid ${checked ? 'var(--primary)' : 'var(--border-color)'}`,
+                          borderRadius: 'var(--radius-md)',
+                          background: checked ? 'rgba(79, 70, 229, 0.05)' : 'transparent',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleBulkSubject(sub.id)}
+                          style={{ accentColor: 'var(--primary)' }}
+                        />
+                        {sub.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
+                Each subject gets a marks column and an "A subject" column — enter <strong>A</strong> there if the student was absent. Total, Average and Grade are calculated in the sheet.
+              </div>
+            </div>
 
             {/* Upload Drop Zone / File Input */}
             <form onSubmit={handleBulkUpload} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1374,7 +1346,7 @@ export const MarksPage = () => {
                   {selectedFile ? selectedFile.name : 'Click to browse Excel spreadsheet (.xlsx, .xls)'}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : 'Template headers: Admission No, Student Name, Class, Section, Subject, Exam, Marks, Maximum Marks'}
+                  {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : `Columns: S.No, Mobile, Name, Class, ${bulkSubjects.length ? bulkSubjects.map(sub => sub.name).join(', ') : 'subjects'}, Total, Average, Grade, absent flags`}
                 </div>
                 <input
                   id="bulk-excel-input"
@@ -1398,11 +1370,11 @@ export const MarksPage = () => {
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={uploading || !selectedFile}
+                  disabled={uploading || !selectedFile || !bulkExam}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}
                 >
                   <Upload size={16} />
-                  {uploading ? 'Processing Spreadsheet...' : 'Upload & Process Marks'}
+                  {uploading ? 'Processing Spreadsheet...' : bulkExam ? `Upload Marks for ${bulkExam}` : 'Select an Exam to Upload'}
                 </button>
               </div>
             </form>
@@ -1418,27 +1390,27 @@ export const MarksPage = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                 <div style={{ padding: '1rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Total Rows</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Student Rows</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-main)' }}>{uploadResult.totalRows || 0}</div>
                 </div>
 
                 <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16, 185, 129, 0.3)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--success)', textTransform: 'uppercase', fontWeight: 600 }}>Successful</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--success)', textTransform: 'uppercase', fontWeight: 600 }}>Marks Added</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--success)' }}>{uploadResult.successfulRows || 0}</div>
                 </div>
 
                 <div style={{ padding: '1rem', background: 'rgba(59, 130, 246, 0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(59, 130, 246, 0.3)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--primary)', textTransform: 'uppercase', fontWeight: 600 }}>Updated</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--primary)', textTransform: 'uppercase', fontWeight: 600 }}>Marks Updated</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary)' }}>{uploadResult.updatedRows || 0}</div>
                 </div>
 
                 <div style={{ padding: '1rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Skipped</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Blank Rows</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-muted)' }}>{uploadResult.skippedRows || 0}</div>
                 </div>
 
                 <div style={{ padding: '1rem', background: 'rgba(239, 68, 68, 0.08)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(239, 68, 68, 0.3)', textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--danger)', textTransform: 'uppercase', fontWeight: 600 }}>Failed</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--danger)', textTransform: 'uppercase', fontWeight: 600 }}>Errors</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--danger)' }}>{uploadResult.failedRows || 0}</div>
                 </div>
               </div>
@@ -1449,7 +1421,7 @@ export const MarksPage = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                     <h4 style={{ margin: 0, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       <AlertCircle size={18} />
-                      Row Validation Errors ({uploadResult.errors.length})
+                      Validation Errors ({uploadResult.errors.length})
                     </h4>
                     <button
                       type="button"
@@ -1467,11 +1439,9 @@ export const MarksPage = () => {
                         <tr>
                           <th style={{ width: '70px' }}>Row</th>
                           <th>Student</th>
-                          <th>Adm No</th>
+                          <th>Mobile</th>
                           <th>Class</th>
-                          <th>Section</th>
                           <th>Subject</th>
-                          <th>Exam</th>
                           <th>Issue</th>
                           <th>Details</th>
                         </tr>
@@ -1481,11 +1451,9 @@ export const MarksPage = () => {
                           <tr key={idx} style={{ background: 'rgba(239, 68, 68, 0.02)' }}>
                             <td><strong>#{err.rowNumber}</strong></td>
                             <td>{err.studentName || '—'}</td>
-                            <td><strong>{err.admissionNumber || '—'}</strong></td>
+                            <td>{err.mobile || '—'}</td>
                             <td>{err.className || '—'}</td>
-                            <td>{err.section || '—'}</td>
                             <td>{err.subjectName || '—'}</td>
-                            <td>{err.examName || '—'}</td>
                             <td>
                               <span className="badge badge-danger" style={{ fontWeight: 700 }}>
                                 {err.issue}

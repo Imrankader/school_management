@@ -27,7 +27,7 @@ export const LeaveRequestsPage = () => {
       setLoading(true);
       const [res, stuRes] = await Promise.allSettled([
         leaveService.getAll(),
-        studentService.getAllStudents({ page: 1, pageSize: 250 }),
+        studentService.getAllStudents({ page: 1, pageSize: 10000 }),
       ]);
 
       if (res.status === 'fulfilled' && res.value?.success && res.value.data) {

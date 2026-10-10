@@ -21,11 +21,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
+        format_sql: false
 
 eureka:
   client:
@@ -61,4 +61,4 @@ management:
 
 logging:
   level:
-    com.school.auth: DEBUG
+    com.school.auth: INFO

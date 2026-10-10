@@ -42,9 +42,14 @@ export const marksService = {
     return response.data;
   },
 
-  downloadTemplate: async (mode = 'WHOLE_SCHOOL') => {
+  // Mark sheet template: one row per student, one column per selected subject
+  downloadTemplate: async ({ className, subjectIds = [], examName } = {}) => {
     const response = await api.get('/api/academic/marks/bulk-template', {
-      params: { mode },
+      params: {
+        subjectIds: subjectIds.join(','),
+        ...(className && { className }),
+        ...(examName && { examName }),
+      },
       responseType: 'blob',
     });
     return response;

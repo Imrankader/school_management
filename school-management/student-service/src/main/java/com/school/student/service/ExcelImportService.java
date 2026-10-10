@@ -385,35 +385,12 @@ public class ExcelImportService {
             }
             sheet.addValidationData(classValidation);
 
-            // 4. DOB Date validation (Col 5)
-            CellRangeAddressList dobRange = new CellRangeAddressList(1, maxValidationRow, 5, 5);
-            DataValidationConstraint dobConstraint = dvHelper.createDateConstraint(
-                    DataValidationConstraint.OperatorType.BETWEEN,
-                    "DATE(1900,1,1)",
-                    "DATE(2099,12,31)",
-                    "yyyy-MM-dd"
-            );
-            DataValidation dobValidation = dvHelper.createValidation(dobConstraint, dobRange);
-            dobValidation.setEmptyCellAllowed(true);
-            dobValidation.setShowErrorBox(true);
-            dobValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
-            dobValidation.createErrorBox("Invalid Date of Birth", "Please enter a valid date in DD-MM-YYYY format.");
-            sheet.addValidationData(dobValidation);
-
-            // 5. Joining Date Date validation (Col 15)
-            CellRangeAddressList jdRange = new CellRangeAddressList(1, maxValidationRow, 15, 15);
-            DataValidationConstraint jdConstraint = dvHelper.createDateConstraint(
-                    DataValidationConstraint.OperatorType.BETWEEN,
-                    "DATE(1900,1,1)",
-                    "DATE(2099,12,31)",
-                    "yyyy-MM-dd"
-            );
-            DataValidation jdValidation = dvHelper.createValidation(jdConstraint, jdRange);
-            jdValidation.setEmptyCellAllowed(true);
-            jdValidation.setShowErrorBox(true);
-            jdValidation.setErrorStyle(DataValidation.ErrorStyle.STOP);
-            jdValidation.createErrorBox("Invalid Joining Date", "Please enter a valid date in DD-MM-YYYY format.");
-            sheet.addValidationData(jdValidation);
+            // 4 & 5. DOB (Col 5) / Joining Date (Col 15): input hint only.
+            // These cells are Text-formatted so "dd-MM-yyyy" is kept as typed; a strict Excel
+            // DATE validation would reject that text and block entry. The upload parser
+            // accepts dd-MM-yyyy, dd/MM/yyyy, yyyy-MM-dd and real Excel date cells.
+            addDateInputHint(sheet, dvHelper, new CellRangeAddressList(1, maxValidationRow, 5, 5), "Date of Birth");
+            addDateInputHint(sheet, dvHelper, new CellRangeAddressList(1, maxValidationRow, 15, 15), "Joining Date");
 
             // 6. Mobile number validation (Cols 10, 11, 12)
             CellRangeAddressList mobileRange = new CellRangeAddressList(1, maxValidationRow, 10, 12);
@@ -922,6 +899,17 @@ public class ExcelImportService {
                     .build());
             return buildFailureResult(errors, parsedRows);
         }
+    }
+
+    private void addDateInputHint(Sheet sheet, DataValidationHelper dvHelper, CellRangeAddressList range, String label) {
+        DataValidationConstraint anyText = dvHelper.createTextLengthConstraint(
+                DataValidationConstraint.OperatorType.GREATER_OR_EQUAL, "0", null);
+        DataValidation hint = dvHelper.createValidation(anyText, range);
+        hint.setEmptyCellAllowed(true);
+        hint.setShowErrorBox(false);
+        hint.setShowPromptBox(true);
+        hint.createPromptBox(label, "Enter as DD-MM-YYYY, e.g. 15-06-2018");
+        sheet.addValidationData(hint);
     }
 
     private void validatePhoneNumberField(String value, String fieldName, int excelRow, String name, String admNo, List<BulkUploadError> errors) {

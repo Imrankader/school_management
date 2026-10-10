@@ -7,5 +7,16 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Libraries change rarely: keep them in their own long-cached chunks
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          vendor: ['axios', 'lucide-react'],
+        },
+      },
+    },
+  },
 })

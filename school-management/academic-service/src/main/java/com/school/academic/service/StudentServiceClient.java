@@ -126,6 +126,16 @@ public class StudentServiceClient {
             if (item.get("isActive") != null) {
                 isActive = Boolean.valueOf(item.get("isActive").toString());
             }
+            List<String> mobiles = new ArrayList<>();
+            String primaryMobile = null;
+            for (String key : new String[]{"fatherMobileNumber", "contactNumber", "motherMobileNumber", "guardianMobileNumber", "phoneNumber"}) {
+                Object val = item.get(key);
+                if (val != null && !val.toString().isBlank()) {
+                    String mobile = val.toString().trim();
+                    if (primaryMobile == null) primaryMobile = mobile;
+                    if (!mobiles.contains(mobile)) mobiles.add(mobile);
+                }
+            }
             result.add(StudentInfoDTO.builder()
                     .id(id)
                     .admissionNumber((String) item.get("admissionNumber"))
@@ -133,6 +143,8 @@ public class StudentServiceClient {
                     .className((String) item.get("className"))
                     .section((String) item.get("section"))
                     .isActive(isActive)
+                    .contactNumber(primaryMobile)
+                    .mobileNumbers(mobiles)
                     .build());
         }
         return result;

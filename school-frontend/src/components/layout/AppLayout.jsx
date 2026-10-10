@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
@@ -18,7 +18,9 @@ export const AppLayout = () => {
       <div className="main-content-wrapper">
         <Navbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
         <main className="page-container">
-          <Outlet />
+          <Suspense fallback={<div className="page-loading" style={{ padding: '2rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Loading...</div>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

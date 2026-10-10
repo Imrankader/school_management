@@ -246,25 +246,23 @@ public class AcademicController {
     @PostMapping("/marks/bulk-upload")
     public ResponseEntity<ApiResponse<BulkUploadResult>> bulkUploadMarks(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "mode", defaultValue = "WHOLE_SCHOOL") String mode,
-            @RequestParam(value = "className", required = false) String className,
-            @RequestParam(value = "section", required = false) String section,
             @RequestParam(value = "examName", required = false) String examName,
-            @RequestParam(value = "subjectName", required = false) String subjectName,
             @RequestHeader(value = "Authorization", required = false) String authHeader) throws java.io.IOException {
         verifyStaffRole(authHeader);
-        BulkUploadResult result = markBulkUploadService.processBulkUpload(file, mode, className, section, subjectName, examName);
+        BulkUploadResult result = markBulkUploadService.processBulkUpload(file, examName);
         return ResponseEntity.ok(ApiResponse.success("Bulk marks processed", result));
     }
 
     @GetMapping("/marks/bulk-template")
     public ResponseEntity<byte[]> downloadTemplate(
-            @RequestParam(value = "mode", defaultValue = "WHOLE_SCHOOL") String mode) throws java.io.IOException {
-        byte[] bytes = markBulkUploadService.generateTemplate(mode);
-        String filename = "WHOLE_SCHOOL".equalsIgnoreCase(mode) ?
-                "marks_whole_school_template.xlsx" : "marks_classwise_template.xlsx";
+            @RequestParam(value = "className", required = false) String className,
+            @RequestParam(value = "subjectIds", required = false) List<Long> subjectIds,
+            @RequestParam(value = "examName", required = false) String examName,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) throws java.io.IOException {
+        verifyStaffRole(authHeader);
+        byte[] bytes = markBulkUploadService.generateTemplate(className, subjectIds, examName);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"marks_template.xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                 .body(bytes);
     }

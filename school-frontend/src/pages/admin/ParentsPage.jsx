@@ -41,14 +41,15 @@ export const ParentsPage = () => {
       setLoading(true);
       const [parentRes, studentRes] = await Promise.allSettled([
         authService.getParents(),
-        studentService.getAllStudents(),
+        studentService.getAllStudents({ page: 1, pageSize: 10000 }),
       ]);
 
       if (parentRes.status === 'fulfilled' && parentRes.value?.data) {
         setParents(parentRes.value.data);
       }
       if (studentRes.status === 'fulfilled' && studentRes.value?.data) {
-        setStudents(studentRes.value.data);
+        const val = studentRes.value.data;
+        setStudents(Array.isArray(val) ? val : (val.data || []));
       }
     } catch (err) {
       addToast('Failed to load parent management data', 'error');

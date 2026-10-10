@@ -19,6 +19,7 @@ public class BulkUploadError {
     private String exam;
     private String issue;
     private String details;
+    private String mobile;
 
     public String getSubjectName() {
         return subject;

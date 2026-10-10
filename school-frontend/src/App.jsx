@@ -1,34 +1,50 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { AppLayout } from './components/layout/AppLayout';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 // Auth Pages
 import { Login } from './pages/Login';
-import { Register } from './pages/Register';
 
-// Admin Pages
-import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { StudentsPage } from './pages/admin/StudentsPage';
-import { ParentsPage } from './pages/admin/ParentsPage';
-import { MarksPage } from './pages/admin/MarksPage';
-import { AttendancePage } from './pages/admin/AttendancePage';
-import { FeesPage } from './pages/admin/FeesPage';
-import { HomeworkPage } from './pages/admin/HomeworkPage';
-import { HolidayPage } from './pages/admin/HolidayPage';
-import { LeaveRequestsPage } from './pages/admin/LeaveRequestsPage';
-import { LeaveReasonsPage } from './pages/admin/LeaveReasonsPage';
-import { ImportExportPage } from './pages/admin/ImportExportPage';
-import { NotificationsPage } from './pages/admin/NotificationsPage';
+// Every other page is split into its own chunk and fetched when its route is first opened,
+// so the login screen and dashboard do not download the whole application up front.
+const CHUNK_RELOAD_KEY = 'app.chunkReloaded';
 
-// Teacher & Parent Pages
-import { TeacherDashboard } from './pages/teacher/TeacherDashboard';
-import { TeacherLeavePage } from './pages/teacher/TeacherLeavePage';
-import { ParentDashboard } from './pages/parent/ParentDashboard';
+const lazyPage = (loader, name) => lazy(() => loader()
+  .then((module) => {
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+    return { default: module[name] };
+  })
+  .catch((error) => {
+    // A new deployment replaces the hashed chunk files, so a tab opened before it cannot
+    // fetch the old ones. Reload once to pick up the new build instead of showing an error.
+    if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+      window.location.reload();
+      return new Promise(() => {});
+    }
+    throw error;
+  }));
 
-import { ErrorBoundary } from './components/common/ErrorBoundary';
+const Register = lazyPage(() => import('./pages/Register'), 'Register');
+const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'), 'AdminDashboard');
+const StudentsPage = lazyPage(() => import('./pages/admin/StudentsPage'), 'StudentsPage');
+const ParentsPage = lazyPage(() => import('./pages/admin/ParentsPage'), 'ParentsPage');
+const MarksPage = lazyPage(() => import('./pages/admin/MarksPage'), 'MarksPage');
+const AttendancePage = lazyPage(() => import('./pages/admin/AttendancePage'), 'AttendancePage');
+const FeesPage = lazyPage(() => import('./pages/admin/FeesPage'), 'FeesPage');
+const HomeworkPage = lazyPage(() => import('./pages/admin/HomeworkPage'), 'HomeworkPage');
+const HolidayPage = lazyPage(() => import('./pages/admin/HolidayPage'), 'HolidayPage');
+const LeaveRequestsPage = lazyPage(() => import('./pages/admin/LeaveRequestsPage'), 'LeaveRequestsPage');
+const LeaveReasonsPage = lazyPage(() => import('./pages/admin/LeaveReasonsPage'), 'LeaveReasonsPage');
+const ImportExportPage = lazyPage(() => import('./pages/admin/ImportExportPage'), 'ImportExportPage');
+const NotificationsPage = lazyPage(() => import('./pages/admin/NotificationsPage'), 'NotificationsPage');
+const TeacherDashboard = lazyPage(() => import('./pages/teacher/TeacherDashboard'), 'TeacherDashboard');
+const TeacherLeavePage = lazyPage(() => import('./pages/teacher/TeacherLeavePage'), 'TeacherLeavePage');
+const ParentDashboard = lazyPage(() => import('./pages/parent/ParentDashboard'), 'ParentDashboard');
 
 // Index Landing Resolver
 const HomeRedirect = () => {
@@ -62,7 +78,7 @@ export const App = () => {
             <Routes>
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
+              <Route path="/register" element={<Suspense fallback={null}><Register /></Suspense>} />
               <Route path="/" element={<HomeRedirect />} />
 
               {/* Admin Protected Routes */}

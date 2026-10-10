@@ -124,9 +124,9 @@ export const IndividualBillingModal = ({
             const res = await studentService.getActiveStudentsByClass(selectedClass);
             list = res?.data || (Array.isArray(res) ? res : []);
           } else {
-            const res = await studentService.getAllStudents();
-            const all = res?.data || (Array.isArray(res) ? res : []);
-            list = all.filter((s) => !Boolean(s.isActive === false));
+            const res = await studentService.getAllStudents({ page: 1, pageSize: 10000, status: 'Active' });
+            const all = res?.data?.data || (Array.isArray(res?.data) ? res.data : []);
+            list = all.filter((s) => s.isActive !== false);
           }
           if (Array.isArray(list) && list.length > 0) {
             setStudentList(list);
