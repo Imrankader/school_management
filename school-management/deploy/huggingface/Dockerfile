@@ -5,7 +5,7 @@ COPY . .
 RUN mvn -q -B package -DskipTests
 
 FROM eclipse-temurin:17-jre
-RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends netcat-openbsd curl && rm -rf /var/lib/apt/lists/* \
  && (userdel -r ubuntu 2>/dev/null || true) && useradd -m -u 1000 user
 WORKDIR /app
 COPY --from=build /build/service-registry/target/*.jar service-registry.jar
