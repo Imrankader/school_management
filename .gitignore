@@ -28,4 +28,5 @@ school-management/maven.zip
 Thumbs.db
 
 # Logs
-*.log
+*.log__pycache__/
+*.pyc

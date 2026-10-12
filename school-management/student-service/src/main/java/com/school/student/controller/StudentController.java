@@ -22,6 +22,16 @@ import java.util.List;
 
 /**
  * REST controller for Student CRUD, Excel import and export.
+ *
+ * Authorization note: some of these endpoints (the student roster lookups) are also called
+ * service-to-service by academic-service, attendance-service and fee-service — without a
+ * token, by design (confirmed: their StudentServiceClient implementations never attach an
+ * Authorization header). The gateway rejects every external /api/** call that lacks a valid
+ * token (except login/register), so "no Authorization header reached this service" only
+ * happens for those trusted internal callers. {@link #denyUnlessRoleOrInternal} therefore
+ * allows a request through when no header is present at all, but still rejects one that
+ * carries a header that is missing/invalid/wrong-role. Endpoints with no internal caller use
+ * {@link #denyUnlessRole}, which always requires a valid token.
  */
 @RestController
 @RequestMapping("/api/students")
@@ -33,6 +43,29 @@ public class StudentController {
     private final ExcelImportService excelImportService;
     private final ExcelExportService excelExportService;
 
+    private <T> ResponseEntity<ApiResponse<T>> denyUnlessRole(String authHeader, String... allowedRoles) {
+        String token = jwtDecoder.extractRaw(authHeader);
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Missing or invalid authentication token."));
+        }
+        String role = jwtDecoder.getRole(token);
+        for (String allowed : allowedRoles) {
+            if (allowed.equalsIgnoreCase(role)) {
+                return null;
+            }
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("You are not authorized to perform this action."));
+    }
+
+    private <T> ResponseEntity<ApiResponse<T>> denyUnlessRoleOrInternal(String authHeader, String... allowedRoles) {
+        if (authHeader == null) {
+            return null; // internal service-to-service call
+        }
+        return denyUnlessRole(authHeader, allowedRoles);
+    }
+
     /** GET /api/students */
     @GetMapping
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> searchStudents(
@@ -40,8 +73,11 @@ public class StudentController {
             @RequestParam(value = "className", required = false) String className,
             @RequestParam(value = "status", required = false, defaultValue = "All") String status,
             @RequestParam(value = "page", defaultValue = "1") int page, // UI is 1-based, Spring Data is 0-based
-            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
-        
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<java.util.Map<String, Object>>> denied = denyUnlessRoleOrInternal(authHeader, "ADMIN", "TEACHER");
+        if (denied != null) return denied;
+
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, pageSize, org.springframework.data.domain.Sort.by("id").descending());
         org.springframework.data.domain.Page<StudentDTO> studentPage = studentService.searchStudents(search, className, status, pageable);
 
@@ -65,13 +101,19 @@ public class StudentController {
 
     /** GET /api/students/class-summary — Student counts grouped by class in academic order */
     @GetMapping("/class-summary")
-    public ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> getClassStudentSummaries() {
+    public ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> getClassStudentSummaries(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> denied = denyUnlessRoleOrInternal(authHeader, "ADMIN", "TEACHER");
+        if (denied != null) return denied;
         return ResponseEntity.ok(ApiResponse.success(studentService.getClassStudentSummaries()));
     }
 
     /** GET /api/students/classes — Distinct classes existing in Student Directory */
     @GetMapping("/classes")
-    public ResponseEntity<ApiResponse<List<String>>> getDistinctClasses() {
+    public ResponseEntity<ApiResponse<List<String>>> getDistinctClasses(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<String>>> denied = denyUnlessRoleOrInternal(authHeader, "ADMIN", "TEACHER");
+        if (denied != null) return denied;
         List<String> classes = studentService.getDistinctClasses();
         return ResponseEntity.ok(ApiResponse.success(classes));
     }
@@ -79,20 +121,50 @@ public class StudentController {
     /** GET /api/students/class/{className}/active — Active students in a class */
     @GetMapping("/class/{className}/active")
     public ResponseEntity<ApiResponse<List<StudentDTO>>> getActiveStudentsByClass(
-            @PathVariable("className") String className) {
+            @PathVariable("className") String className,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<StudentDTO>>> denied = denyUnlessRoleOrInternal(authHeader, "ADMIN", "TEACHER");
+        if (denied != null) return denied;
         List<StudentDTO> students = studentService.getActiveStudentsByClass(className);
         return ResponseEntity.ok(ApiResponse.success(students));
     }
 
     /** GET /api/students/active-by-class — All active students grouped by class */
     @GetMapping("/active-by-class")
-    public ResponseEntity<ApiResponse<java.util.Map<String, List<StudentDTO>>>> getActiveStudentsGroupedByClass() {
+    public ResponseEntity<ApiResponse<java.util.Map<String, List<StudentDTO>>>> getActiveStudentsGroupedByClass(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<java.util.Map<String, List<StudentDTO>>>> denied = denyUnlessRoleOrInternal(authHeader, "ADMIN", "TEACHER");
+        if (denied != null) return denied;
         return ResponseEntity.ok(ApiResponse.success(studentService.getActiveStudentsGroupedByClass()));
     }
 
-    /** GET /api/students/{id} */
+    /**
+     * GET /api/students/{id}
+     * ADMIN/TEACHER may view any student; PARENT only their own linked child; an internal
+     * service-to-service call (no Authorization header) is allowed through unrestricted.
+     */
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<StudentDTO>> getStudentById(@PathVariable("id") Long id) {
+    public ResponseEntity<ApiResponse<StudentDTO>> getStudentById(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader != null) {
+            String token = jwtDecoder.extractRaw(authHeader);
+            if (token == null || !jwtDecoder.isValidToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error("Missing or invalid authentication token."));
+            }
+            String role = jwtDecoder.getRole(token);
+            if ("PARENT".equalsIgnoreCase(role)) {
+                Long linkedStudentId = jwtDecoder.getStudentId(token);
+                if (linkedStudentId == null || !linkedStudentId.equals(id)) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(ApiResponse.error("You can only view your own child's profile."));
+                }
+            } else if (!"ADMIN".equalsIgnoreCase(role) && !"TEACHER".equalsIgnoreCase(role)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error("You are not authorized to view this student."));
+            }
+        }
         StudentDTO student = studentService.getStudentById(id);
         return ResponseEntity.ok(ApiResponse.success(student));
     }
@@ -107,16 +179,15 @@ public class StudentController {
             HttpServletRequest request) {
 
         String authHeader = request.getHeader("Authorization");
+        ResponseEntity<ApiResponse<List<StudentDTO>>> denied = denyUnlessRole(authHeader, "ADMIN", "PARENT");
+        if (denied != null) return denied;
+
         String token = jwtDecoder.extractRaw(authHeader);
-
-        if (token != null && jwtDecoder.isValidToken(token)) {
-            String role = jwtDecoder.getRole(token);
-            Long callerUserId = jwtDecoder.getUserId(token);
-
-            if ("PARENT".equals(role) && !parentId.equals(callerUserId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(ApiResponse.error("Forbidden: you can only view your own children"));
-            }
+        String role = jwtDecoder.getRole(token);
+        Long callerUserId = jwtDecoder.getUserId(token);
+        if ("PARENT".equalsIgnoreCase(role) && !parentId.equals(callerUserId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Forbidden: you can only view your own children"));
         }
 
         List<StudentDTO> students = studentService.getStudentsByParent(parentId);
@@ -125,7 +196,11 @@ public class StudentController {
 
     /** POST /api/students */
     @PostMapping
-    public ResponseEntity<ApiResponse<StudentDTO>> createStudent(@Valid @RequestBody StudentDTO dto) {
+    public ResponseEntity<ApiResponse<StudentDTO>> createStudent(
+            @Valid @RequestBody StudentDTO dto,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<StudentDTO>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         StudentDTO created = studentService.createStudent(dto);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -135,14 +210,21 @@ public class StudentController {
     /** PUT /api/students/{id} */
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<StudentDTO>> updateStudent(@PathVariable("id") Long id,
-                                                                  @Valid @RequestBody StudentDTO dto) {
+                                                                  @Valid @RequestBody StudentDTO dto,
+                                                                  @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<StudentDTO>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         StudentDTO updated = studentService.updateStudent(id, dto);
         return ResponseEntity.ok(ApiResponse.success("Student updated successfully", updated));
     }
 
     /** DELETE /api/students/{id} */
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteStudent(@PathVariable("id") Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteStudent(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<Void>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         studentService.deleteStudent(id);
         return ResponseEntity.ok(ApiResponse.success("Student deleted successfully", null));
     }
@@ -150,7 +232,10 @@ public class StudentController {
     /** PATCH /api/students/{id}/status */
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<StudentDTO>> updateStudentStatus(@PathVariable("id") Long id,
-                                                                       @RequestBody java.util.Map<String, String> statusUpdate) {
+                                                                       @RequestBody java.util.Map<String, String> statusUpdate,
+                                                                       @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<StudentDTO>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         String status = statusUpdate.get("status");
         boolean isActive = "ACTIVE".equalsIgnoreCase(status);
         StudentDTO updated = studentService.updateStudentStatus(id, isActive);
@@ -176,7 +261,10 @@ public class StudentController {
      */
     @PostMapping("/import")
     public ResponseEntity<ApiResponse<ImportResult>> importStudents(
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<ImportResult>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
 
         if (file.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -203,7 +291,9 @@ public class StudentController {
      * Download all students as school_management_backup.xlsx
      */
     @GetMapping("/export")
-    public ResponseEntity<byte[]> exportStudents() {
+    public ResponseEntity<?> exportStudents(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<Object>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         try {
             byte[] excelBytes = excelExportService.generateBackup();
             HttpHeaders headers = new HttpHeaders();
@@ -223,7 +313,10 @@ public class StudentController {
      * When className is specified, includes that class's existing students + blank rows.
      */
     @GetMapping("/bulk-template")
-    public ResponseEntity<byte[]> downloadBulkTemplate(@RequestParam(value = "className", required = false) String className) {
+    public ResponseEntity<?> downloadBulkTemplate(@RequestParam(value = "className", required = false) String className,
+                                                    @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<Object>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         try {
             byte[] templateBytes = excelImportService.generateTemplate(className);
             HttpHeaders headers = new HttpHeaders();
@@ -250,15 +343,9 @@ public class StudentController {
             @RequestParam(value = "className", required = false) String className,
             HttpServletRequest request) {
 
-        String authHeader = request.getHeader("Authorization");
-        String token = jwtDecoder.extractRaw(authHeader);
-        if (token != null && jwtDecoder.isValidToken(token)) {
-            String role = jwtDecoder.getRole(token);
-            if (!"ADMIN".equalsIgnoreCase(role)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(ApiResponse.error("Access denied: only ADMIN can validate student uploads."));
-            }
-        }
+        ResponseEntity<ApiResponse<com.school.student.dto.BulkUploadResult>> denied =
+                denyUnlessRole(request.getHeader("Authorization"), "ADMIN");
+        if (denied != null) return denied;
 
         try {
             com.school.student.dto.BulkUploadResult result = excelImportService.validateBulkUpload(file, className);
@@ -279,15 +366,9 @@ public class StudentController {
             @RequestParam(value = "className", required = false) String className,
             HttpServletRequest request) {
 
-        String authHeader = request.getHeader("Authorization");
-        String token = jwtDecoder.extractRaw(authHeader);
-        if (token != null && jwtDecoder.isValidToken(token)) {
-            String role = jwtDecoder.getRole(token);
-            if (!"ADMIN".equalsIgnoreCase(role)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(ApiResponse.error("Access denied: only ADMIN can perform bulk student uploads."));
-            }
-        }
+        ResponseEntity<ApiResponse<com.school.student.dto.BulkUploadResult>> denied =
+                denyUnlessRole(request.getHeader("Authorization"), "ADMIN");
+        if (denied != null) return denied;
 
         try {
             com.school.student.dto.BulkUploadResult result = excelImportService.processBulkUpload(file, className);

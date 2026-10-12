@@ -192,7 +192,9 @@ public class AcademicController {
                 String role = normalizeRole(jwtDecoder.getRole(token));
                 if ("PARENT".equals(role)) {
                     Long tokenStudentId = jwtDecoder.getStudentId(token);
-                    if (tokenStudentId != null && !tokenStudentId.equals(studentId)) {
+                    // Must match a linked child; a null tokenStudentId (self-registered, no child
+                    // linked yet) must also be rejected, not silently let through.
+                    if (tokenStudentId == null || !tokenStudentId.equals(studentId)) {
                         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                                 .body(ApiResponse.error("You are only authorized to view marks for your linked child"));
                     }
@@ -203,7 +205,10 @@ public class AcademicController {
     }
 
     @GetMapping("/marks/exam/{examId}")
-    public ResponseEntity<ApiResponse<List<MarkDTO>>> getMarksByExam(@PathVariable("examId") Long examId) {
+    public ResponseEntity<ApiResponse<List<MarkDTO>>> getMarksByExam(
+            @PathVariable("examId") Long examId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyStaffRole(authHeader);
         return ResponseEntity.ok(ApiResponse.success(academicService.getMarksByExam(examId)));
     }
 

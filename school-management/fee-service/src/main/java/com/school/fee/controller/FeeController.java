@@ -7,6 +7,7 @@ import com.school.fee.dto.FeeDTO;
 import com.school.fee.dto.RecentPaymentDTO;
 import com.school.fee.dto.StudentBillingRowDTO;
 import com.school.fee.entity.Payment;
+import com.school.fee.security.JwtDecoder;
 import com.school.fee.service.FeeExcelService;
 import com.school.fee.service.FeeService;
 import jakarta.validation.Valid;
@@ -24,6 +25,8 @@ import java.util.List;
 
 /**
  * REST controller for Fee, Payment, Class Summary, and Bulk Billing management.
+ * Billing is administrative data: every endpoint requires ADMIN, except the two
+ * per-student reads, which a PARENT may also call for their own linked child.
  */
 @RestController
 @RequestMapping("/api/fees")
@@ -33,10 +36,58 @@ public class FeeController {
 
     private final FeeService feeService;
     private final FeeExcelService feeExcelService;
+    private final JwtDecoder jwtDecoder;
+
+    /**
+     * 401 if the token is missing/invalid, 403 if the caller's role isn't in {@code allowedRoles};
+     * null means the caller is authorized to proceed. No endpoint here is called service-to-service
+     * (confirmed: no other service's *ServiceClient targets fee-service), so every check fails closed.
+     */
+    private <T> ResponseEntity<ApiResponse<T>> denyUnlessRole(String authHeader, String... allowedRoles) {
+        String token = jwtDecoder.extractRaw(authHeader);
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Missing or invalid authentication token."));
+        }
+        String role = jwtDecoder.getRole(token);
+        for (String allowed : allowedRoles) {
+            if (allowed.equalsIgnoreCase(role)) {
+                return null;
+            }
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("You are not authorized to perform this action."));
+    }
+
+    /** ADMIN may view any student's billing; PARENT only their own linked child's. */
+    private <T> ResponseEntity<ApiResponse<T>> denyUnlessAdminOrOwnChild(String authHeader, Long studentId) {
+        String token = jwtDecoder.extractRaw(authHeader);
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Missing or invalid authentication token."));
+        }
+        String role = jwtDecoder.getRole(token);
+        if ("ADMIN".equalsIgnoreCase(role)) {
+            return null;
+        }
+        if ("PARENT".equalsIgnoreCase(role)) {
+            Long linkedStudentId = jwtDecoder.getStudentId(token);
+            if (linkedStudentId != null && linkedStudentId.equals(studentId)) {
+                return null;
+            }
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("You can only view your own child's billing records."));
+        }
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("You are not authorized to view billing records."));
+    }
 
     /** GET /api/fees/class-summary — Class-wise billing summary for the main portal */
     @GetMapping("/class-summary")
-    public ResponseEntity<ApiResponse<List<ClassBillingSummaryDTO>>> getClassBillingSummaries() {
+    public ResponseEntity<ApiResponse<List<ClassBillingSummaryDTO>>> getClassBillingSummaries(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<ClassBillingSummaryDTO>>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         List<ClassBillingSummaryDTO> summaries = feeService.getClassBillingSummaries();
         return ResponseEntity.ok(ApiResponse.success(summaries));
     }
@@ -44,16 +95,22 @@ public class FeeController {
     /** GET /api/fees/class/{className} — Detailed student-level billing rows for a class */
     @GetMapping("/class/{className}")
     public ResponseEntity<ApiResponse<List<StudentBillingRowDTO>>> getStudentBillingForClass(
-            @PathVariable("className") String className) {
+            @PathVariable("className") String className,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<StudentBillingRowDTO>>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         List<StudentBillingRowDTO> rows = feeService.getStudentBillingForClass(className);
         return ResponseEntity.ok(ApiResponse.success(rows));
     }
 
     /** GET /api/fees/template/{className} or /api/fees/template?className=... or /api/fees/excel/template — Download pre-filled Excel template for a class */
     @GetMapping({"/template/{className}", "/template", "/excel/template"})
-    public ResponseEntity<byte[]> downloadBillingTemplate(
+    public ResponseEntity<?> downloadBillingTemplate(
             @PathVariable(value = "className", required = false) String pathClassName,
-            @RequestParam(value = "className", required = false) String queryClassName) {
+            @RequestParam(value = "className", required = false) String queryClassName,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<Object>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         String targetClass = pathClassName != null && !pathClassName.trim().isEmpty() ? pathClassName.trim() : queryClassName;
         if (targetClass == null || targetClass.trim().isEmpty()) {
             targetClass = "ALL";
@@ -79,7 +136,10 @@ public class FeeController {
     @PostMapping("/bulk-upload")
     public ResponseEntity<ApiResponse<BulkUploadBillingResult>> bulkUploadBilling(
             @RequestParam(value = "className", required = false) String className,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<BulkUploadBillingResult>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         String targetClass = (className != null && !className.trim().isEmpty()) ? className.trim() : "ALL";
         try {
             BulkUploadBillingResult result = feeExcelService.processBulkUpload(targetClass, file);
@@ -91,16 +151,24 @@ public class FeeController {
         }
     }
 
-    /** GET /api/fees/student/{studentId} — Get fees by student */
+    /** GET /api/fees/student/{studentId} — Get fees by student. ADMIN any; PARENT their own child only. */
     @GetMapping("/student/{studentId}")
-    public ResponseEntity<ApiResponse<List<FeeDTO>>> getFeesByStudent(@PathVariable("studentId") Long studentId) {
+    public ResponseEntity<ApiResponse<List<FeeDTO>>> getFeesByStudent(
+            @PathVariable("studentId") Long studentId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<FeeDTO>>> denied = denyUnlessAdminOrOwnChild(authHeader, studentId);
+        if (denied != null) return denied;
         List<FeeDTO> fees = feeService.getFeesByStudent(studentId);
         return ResponseEntity.ok(ApiResponse.success(fees));
     }
 
     /** POST /api/fees — Create or update individual student billing record */
     @PostMapping
-    public ResponseEntity<ApiResponse<FeeDTO>> createFee(@Valid @RequestBody FeeDTO dto) {
+    public ResponseEntity<ApiResponse<FeeDTO>> createFee(
+            @Valid @RequestBody FeeDTO dto,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<FeeDTO>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         FeeDTO saved = feeService.createOrUpdateFee(dto);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Billing record saved successfully", saved));
@@ -109,7 +177,10 @@ public class FeeController {
     /** PUT /api/fees/{id} — Update a fee record */
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<FeeDTO>> updateFee(@PathVariable("id") Long id,
-                                                          @Valid @RequestBody FeeDTO dto) {
+                                                          @Valid @RequestBody FeeDTO dto,
+                                                          @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<FeeDTO>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         FeeDTO updated = feeService.updateFee(id, dto);
         return ResponseEntity.ok(ApiResponse.success("Fee record updated", updated));
     }
@@ -118,7 +189,10 @@ public class FeeController {
     @PostMapping("/{feeId}/payments")
     public ResponseEntity<ApiResponse<Payment>> recordPayment(
             @PathVariable("feeId") Long feeId,
-            @RequestBody Payment payment) {
+            @RequestBody Payment payment,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<Payment>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         Payment recorded = feeService.recordPayment(feeId, payment);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Payment recorded", recorded));
@@ -126,14 +200,22 @@ public class FeeController {
 
     /** GET /api/fees/{feeId}/payments — Get payment history for a fee */
     @GetMapping("/{feeId}/payments")
-    public ResponseEntity<ApiResponse<List<Payment>>> getPaymentsByFee(@PathVariable("feeId") Long feeId) {
+    public ResponseEntity<ApiResponse<List<Payment>>> getPaymentsByFee(
+            @PathVariable("feeId") Long feeId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<Payment>>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         List<Payment> payments = feeService.getPaymentsByFee(feeId);
         return ResponseEntity.ok(ApiResponse.success(payments));
     }
 
-    /** GET /api/fees/student/{studentId}/payments — All payments for a student */
+    /** GET /api/fees/student/{studentId}/payments — All payments for a student. ADMIN any; PARENT their own child only. */
     @GetMapping("/student/{studentId}/payments")
-    public ResponseEntity<ApiResponse<List<Payment>>> getPaymentsByStudent(@PathVariable("studentId") Long studentId) {
+    public ResponseEntity<ApiResponse<List<Payment>>> getPaymentsByStudent(
+            @PathVariable("studentId") Long studentId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<Payment>>> denied = denyUnlessAdminOrOwnChild(authHeader, studentId);
+        if (denied != null) return denied;
         List<Payment> payments = feeService.getPaymentsByStudent(studentId);
         return ResponseEntity.ok(ApiResponse.success(payments));
     }
@@ -141,7 +223,10 @@ public class FeeController {
     /** GET /api/fees/payments/recent — Recent payments with student and class information */
     @GetMapping("/payments/recent")
     public ResponseEntity<ApiResponse<List<RecentPaymentDTO>>> getRecentPayments(
-            @RequestParam(value = "limit", defaultValue = "10") int limit) {
+            @RequestParam(value = "limit", defaultValue = "10") int limit,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<RecentPaymentDTO>>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
         List<RecentPaymentDTO> payments = feeService.getRecentPayments(limit);
         return ResponseEntity.ok(ApiResponse.success(payments));
     }
