@@ -7,10 +7,12 @@ import com.school.attendance.entity.Attendance;
 import com.school.attendance.entity.Holiday;
 import com.school.attendance.entity.LeaveReason;
 import com.school.attendance.entity.LeaveRequest;
+import com.school.attendance.entity.TeacherLeaveRequest;
 import com.school.attendance.repository.AttendanceRepository;
 import com.school.attendance.repository.HolidayRepository;
 import com.school.attendance.repository.LeaveReasonRepository;
 import com.school.attendance.repository.LeaveRequestRepository;
+import com.school.attendance.repository.TeacherLeaveRequestRepository;
 import com.school.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +34,9 @@ public class AttendanceService {
     private final HolidayRepository holidayRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final LeaveReasonRepository leaveReasonRepository;
+    private final TeacherLeaveRequestRepository teacherLeaveRequestRepository;
     private final StudentServiceClient studentServiceClient;
+    private final NotificationServiceClient notificationServiceClient;
 
     // ---- Attendance ----
 
@@ -212,6 +216,42 @@ public class AttendanceService {
 
     public List<LeaveRequest> getLeaveByParent(Long parentId) {
         return leaveRequestRepository.findByParentId(parentId);
+    }
+
+    // ---- Teacher's own leave (no approval workflow, same posture as student leave) ----
+
+    public TeacherLeaveRequest submitTeacherLeave(Long teacherId, String teacherName, String assignedClass,
+                                                   String assignedSection, TeacherLeaveRequest request) {
+        request.setTeacherId(teacherId);
+        request.setTeacherName(teacherName);
+        request.setAssignedClass(assignedClass);
+        request.setAssignedSection(assignedSection);
+        request.setStatus("RECORDED");
+
+        LocalDate effectiveDate = request.getLeaveDate() != null ? request.getLeaveDate() : request.getStartDate();
+        if (effectiveDate == null) {
+            effectiveDate = LocalDate.now();
+        }
+        request.setStartDate(effectiveDate);
+
+        TeacherLeaveRequest saved = teacherLeaveRequestRepository.save(request);
+        log.info("Teacher leave submitted by teacher {} ({}) on {}", teacherId, teacherName, effectiveDate);
+
+        String dateLabel = request.getEndDate() != null
+                ? (effectiveDate + " to " + request.getEndDate())
+                : effectiveDate.toString();
+        notificationServiceClient.notify("ADMIN",
+                teacherName + " has requested leave on " + dateLabel + ": " + request.getReason());
+
+        return saved;
+    }
+
+    public List<TeacherLeaveRequest> getAllTeacherLeave() {
+        return teacherLeaveRequestRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    public List<TeacherLeaveRequest> getMyTeacherLeave(Long teacherId) {
+        return teacherLeaveRequestRepository.findByTeacherIdOrderByCreatedAtDesc(teacherId);
     }
 
     private Map<Long, StudentInfoDTO> buildStudentMap() {

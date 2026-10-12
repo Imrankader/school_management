@@ -241,6 +241,19 @@ public class StudentService {
         log.info("Deleted student id: {}", id);
     }
 
+    /**
+     * Deletes every student record. Mirrors {@link #deleteStudent(Long)}'s scope exactly: only
+     * this service's own rows. Marks, fees, attendance and leave records in the other services
+     * are untouched (same as a single delete already leaves them), since they're separate
+     * databases with no cross-service cascade in this architecture.
+     */
+    public long clearAllStudents() {
+        long count = studentRepository.count();
+        studentRepository.deleteAllInBatch();
+        log.warn("Cleared all student records: {} deleted", count);
+        return count;
+    }
+
     public StudentDTO updateStudentStatus(Long id, boolean isActive) {
         Student existing = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", "id", id));

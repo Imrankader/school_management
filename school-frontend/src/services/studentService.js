@@ -36,6 +36,12 @@ export const studentService = {
     return response.data;
   },
 
+  // Permanently deletes every student record. No undo.
+  clearAllStudents: async () => {
+    const response = await api.delete('/api/students/clear-all');
+    return response.data;
+  },
+
   updateStudentStatus: async (id, status) => {
     const response = await api.patch(`/api/students/${id}/status`, { status });
     return response.data;

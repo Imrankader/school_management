@@ -25,6 +25,26 @@ export const leaveService = {
     return response.data;
   },
 
+  // ---- Teacher's own leave ----
+
+  // Teacher submits leave for themselves (teacherName is their own display name)
+  submitTeacherLeave: async (data) => {
+    const response = await api.post('/api/attendance/teacher-leave', data);
+    return response.data;
+  },
+
+  // Admin: every teacher's leave, most recent first
+  getAllTeacherLeave: async () => {
+    const response = await api.get('/api/attendance/teacher-leave');
+    return response.data;
+  },
+
+  // Teacher: only their own submitted leave
+  getMyTeacherLeave: async () => {
+    const response = await api.get('/api/attendance/teacher-leave/my');
+    return response.data;
+  },
+
   // ---- Leave Reasons (bilingual English + Tamil) ----
 
   // Get active reasons for parent dropdown

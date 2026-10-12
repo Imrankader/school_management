@@ -24,21 +24,30 @@ public class NotificationController {
     private final NotificationService notificationService;
     private final JwtDecoder jwtDecoder;
 
-    /** POST /api/notifications — Admin sends a notification */
+    /**
+     * POST /api/notifications — Admin sends a notification.
+     * Also called service-to-service (no Authorization header) by attendance-service when a
+     * teacher submits their own leave — same internal-call pattern used by the *ServiceClient
+     * classes that call into student-service: the gateway requires a valid token for every
+     * external /api/** request, so a request with no header at all only ever reaches this
+     * service from inside the backend's own network.
+     */
     @PostMapping
     public ResponseEntity<ApiResponse<NotificationDTO>> sendNotification(
             @Valid @RequestBody NotificationDTO dto,
             HttpServletRequest request) {
-        // Verify caller is ADMIN
-        String token = jwtDecoder.extractRaw(request.getHeader("Authorization"));
-        if (token == null || !jwtDecoder.isValidToken(token)) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ApiResponse.error("Invalid or expired authentication token"));
-        }
-        String role = jwtDecoder.getRole(token);
-        if (!"ADMIN".equals(role)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(ApiResponse.error("Only ADMIN can send notifications"));
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null) {
+            String token = jwtDecoder.extractRaw(authHeader);
+            if (token == null || !jwtDecoder.isValidToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(ApiResponse.error("Invalid or expired authentication token"));
+            }
+            String role = jwtDecoder.getRole(token);
+            if (!"ADMIN".equals(role)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error("Only ADMIN can send notifications"));
+            }
         }
 
         NotificationDTO sent = notificationService.sendNotification(dto);

@@ -250,6 +250,67 @@ public class AttendanceController {
         return ResponseEntity.ok(ApiResponse.success(requests));
     }
 
+    // ---- Teacher's own leave ----
+
+    /**
+     * POST /api/attendance/teacher-leave — Teacher submits leave for themselves.
+     * teacherId / assignedClass / assignedSection are resolved from the JWT, never from the
+     * request body; teacherName is display-only, matching how student/fee names are denormalized
+     * elsewhere in this app. Recorded directly as RECORDED and also raises a notification.
+     */
+    @PostMapping("/teacher-leave")
+    public ResponseEntity<ApiResponse<com.school.attendance.entity.TeacherLeaveRequest>> submitTeacherLeave(
+            @RequestBody com.school.attendance.entity.TeacherLeaveRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<com.school.attendance.entity.TeacherLeaveRequest>> denied =
+                denyUnlessRole(authHeader, "TEACHER");
+        if (denied != null) return denied;
+
+        String token = jwtDecoder.extractRaw(authHeader);
+        Long teacherId = jwtDecoder.getUserId(token);
+        String assignedClass = jwtDecoder.getAssignedClass(token);
+        String assignedSection = jwtDecoder.getAssignedSection(token);
+
+        if (request.getTeacherName() == null || request.getTeacherName().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("Your name is required."));
+        }
+        if (request.getLeaveDate() == null && request.getStartDate() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("Leave date is required."));
+        }
+        if (request.getReason() == null || request.getReason().trim().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error("Leave reason is required."));
+        }
+
+        com.school.attendance.entity.TeacherLeaveRequest saved =
+                attendanceService.submitTeacherLeave(teacherId, request.getTeacherName().trim(), assignedClass, assignedSection, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Leave recorded successfully", saved));
+    }
+
+    /**
+     * GET /api/attendance/teacher-leave — Admin view: every teacher's leave, most recent first.
+     */
+    @GetMapping("/teacher-leave")
+    public ResponseEntity<ApiResponse<List<com.school.attendance.entity.TeacherLeaveRequest>>> getAllTeacherLeave(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<com.school.attendance.entity.TeacherLeaveRequest>>> denied =
+                denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.getAllTeacherLeave()));
+    }
+
+    /**
+     * GET /api/attendance/teacher-leave/my — Teacher view: only their own submitted leave.
+     */
+    @GetMapping("/teacher-leave/my")
+    public ResponseEntity<ApiResponse<List<com.school.attendance.entity.TeacherLeaveRequest>>> getMyTeacherLeave(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<List<com.school.attendance.entity.TeacherLeaveRequest>>> denied =
+                denyUnlessRole(authHeader, "TEACHER");
+        if (denied != null) return denied;
+        Long teacherId = jwtDecoder.getUserId(jwtDecoder.extractRaw(authHeader));
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.getMyTeacherLeave(teacherId)));
+    }
+
     // ---- Leave Reasons (Admin-managed, bilingual English + Tamil) ----
 
     /**

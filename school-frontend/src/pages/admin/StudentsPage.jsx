@@ -35,6 +35,7 @@ export const StudentsPage = () => {
   // Class Summary State
   const [classSummaries, setClassSummaries] = useState([]);
   const [loadingSummaries, setLoadingSummaries] = useState(false);
+  const [clearingData, setClearingData] = useState(false);
 
   // Master Search State (Search across all students by Name, Roll No, Admission No, Phone Number)
   const [masterSearch, setMasterSearch] = useState('');
@@ -296,6 +297,37 @@ export const StudentsPage = () => {
       addToast('Failed to load class student summaries', 'error');
     } finally {
       setLoadingSummaries(false);
+    }
+  };
+
+  // Permanently deletes every student record in the school. No undo.
+  const handleClearAllData = async () => {
+    if (totalStudents === 0) {
+      addToast('There are no students to clear.', 'info');
+      return;
+    }
+    const firstConfirm = window.confirm(
+      `Are you sure you want to clear ALL student data? This will permanently delete all ${totalStudents} student records across every class.`
+    );
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(
+      `This cannot be undone. ${totalStudents} student records will be permanently removed right now. Click OK to proceed.`
+    );
+    if (!secondConfirm) return;
+
+    try {
+      setClearingData(true);
+      const res = await studentService.clearAllStudents();
+      const deletedCount = res?.data?.deletedCount ?? totalStudents;
+      addToast(`Cleared ${deletedCount} student record(s).`, 'success');
+      await loadClassSummaries();
+      setMasterStudents([]);
+      setMasterSearch('');
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to clear student data', 'error');
+    } finally {
+      setClearingData(false);
     }
   };
 
@@ -615,6 +647,18 @@ export const StudentsPage = () => {
               >
                 <Plus size={16} />
                 Add Student
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem', fontWeight: 600 }}
+                onClick={handleClearAllData}
+                disabled={clearingData}
+                title="Permanently delete every student record"
+              >
+                <Trash2 size={15} />
+                {clearingData ? 'Clearing...' : 'Clear Data'}
               </button>
             </div>
           </div>

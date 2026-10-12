@@ -229,6 +229,21 @@ public class StudentController {
         return ResponseEntity.ok(ApiResponse.success("Student deleted successfully", null));
     }
 
+    /**
+     * DELETE /api/students/clear-all — Permanently deletes every student record. ADMIN only.
+     * Registered before "/{id}" has no overlap (different HTTP method/path shape), but kept
+     * next to it for visibility given how destructive it is.
+     */
+    @DeleteMapping("/clear-all")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> clearAllStudents(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<java.util.Map<String, Object>>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
+        long deleted = studentService.clearAllStudents();
+        return ResponseEntity.ok(ApiResponse.success("All student records cleared",
+                java.util.Map.of("deletedCount", deleted)));
+    }
+
     /** PATCH /api/students/{id}/status */
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<StudentDTO>> updateStudentStatus(@PathVariable("id") Long id,

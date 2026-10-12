@@ -46,9 +46,10 @@ export const AdminDashboard = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [studentsRes, leavesRes, examsRes, feesRes] = await Promise.allSettled([
+      const [studentsRes, leavesRes, teacherLeavesRes, examsRes, feesRes] = await Promise.allSettled([
         studentService.getAllStudents({ page: 1, pageSize: 1 }),
         leaveService.getAll(),
+        leaveService.getAllTeacherLeave(),
         academicService.getAllExams(),
         feeService.getClassBillingSummary(),
       ]);
@@ -67,12 +68,25 @@ export const AdminDashboard = () => {
         }
       }
 
-      // Extract Leaves
+      // Extract Leaves (student leave, submitted by parents)
       let leavesList = [];
       if (leavesRes.status === 'fulfilled' && leavesRes.value) {
         const val = leavesRes.value;
         leavesList = Array.isArray(val) ? val : (val.data || []);
       }
+
+      // Extract Teacher Leaves
+      let teacherLeavesList = [];
+      if (teacherLeavesRes.status === 'fulfilled' && teacherLeavesRes.value) {
+        const val = teacherLeavesRes.value;
+        teacherLeavesList = Array.isArray(val) ? val : (val.data || []);
+      }
+
+      // Combine both kinds of leave into one "recent activity" feed, most recent first
+      const combinedLeaves = [
+        ...leavesList.map((lv) => ({ ...lv, leaveKind: 'student' })),
+        ...teacherLeavesList.map((lv) => ({ ...lv, leaveKind: 'teacher' })),
+      ].sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
 
       // Extract Exams
       let examsList = [];
@@ -96,12 +110,12 @@ export const AdminDashboard = () => {
 
       setStats({
         studentsCount: totalStudentsCount || studentsList.length,
-        pendingLeaves: leavesList.length,
+        pendingLeaves: leavesList.length + teacherLeavesList.length,
       });
 
       setUpcomingExams(examsList.slice(0, 4));
       setFeeSummary({ totalBilled: billed, totalPaid: paid, totalOutstanding: outstanding });
-      setRecentLeaves(leavesList.slice(0, 4));
+      setRecentLeaves(combinedLeaves.slice(0, 4));
     } catch (err) {
       console.error('Error fetching dashboard stats', err);
     } finally {
@@ -468,30 +482,39 @@ export const AdminDashboard = () => {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {recentLeaves.map((lv) => (
-                  <div
-                    key={lv.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '0.5rem 0',
-                      borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                        {lv.studentName || `Student #${lv.studentId}`}
+                {recentLeaves.map((lv) => {
+                  const isTeacher = lv.leaveKind === 'teacher';
+                  const name = isTeacher
+                    ? (lv.teacherName || `Teacher #${lv.teacherId}`)
+                    : (lv.studentName || `Student #${lv.studentId}`);
+                  return (
+                    <div
+                      key={`${lv.leaveKind}-${lv.id}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.5rem 0',
+                        borderBottom: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {name}
+                          <span className={`badge ${isTeacher ? 'badge-primary' : 'badge-secondary'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem' }}>
+                            {isTeacher ? 'Teacher' : 'Student'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {lv.reason || 'Leave requested'} • {lv.leaveDate || lv.startDate || 'Date not specified'}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {lv.reason || 'Leave requested'} • {lv.startDate || 'Date not specified'}
-                      </div>
+                      <span className="badge badge-secondary" style={{ fontSize: '0.7rem' }}>
+                        {lv.status || 'RECORDED'}
+                      </span>
                     </div>
-                    <span className="badge badge-secondary" style={{ fontSize: '0.7rem' }}>
-                      RECORDED
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

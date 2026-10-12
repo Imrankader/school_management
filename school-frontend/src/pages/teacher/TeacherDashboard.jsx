@@ -6,6 +6,7 @@ import { holidayService } from '../../services/holidayService';
 import { leaveService } from '../../services/leaveService';
 import { notificationService } from '../../services/notificationService';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/common/Modal';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import {
@@ -19,6 +20,7 @@ import {
   Bell,
   RefreshCw,
   ExternalLink,
+  UserCheck,
 } from 'lucide-react';
 import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
 
@@ -41,15 +43,26 @@ export const TeacherDashboard = () => {
   // Holidays State
   const [holidays, setHolidays] = useState([]);
 
-  // Leave Requests State
+  // Leave Requests State (students in the teacher's class)
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [leaveSearch, setLeaveSearch] = useState('');
+
+  // My Leave State (the teacher's own leave)
+  const [myLeaves, setMyLeaves] = useState([]);
+  const [myLeaveModal, setMyLeaveModal] = useState(false);
+  const [myLeaveForm, setMyLeaveForm] = useState({
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: '',
+    reason: '',
+  });
+  const [submittingMyLeave, setSubmittingMyLeave] = useState(false);
 
   // Notifications State
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   const { addToast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     loadInitialData();
@@ -58,10 +71,11 @@ export const TeacherDashboard = () => {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [hwRes, holRes, lvRes] = await Promise.allSettled([
+      const [hwRes, holRes, lvRes, myLvRes] = await Promise.allSettled([
         homeworkService.getAll(),
         holidayService.getAll(),
         leaveService.getTeacherLeaves(),
+        leaveService.getMyTeacherLeave(),
       ]);
 
       if (hwRes.status === 'fulfilled' && hwRes.value?.data) setHomeworkList(hwRes.value.data);
@@ -70,10 +84,41 @@ export const TeacherDashboard = () => {
         const lvData = lvRes.value?.data || (Array.isArray(lvRes.value) ? lvRes.value : []);
         setLeaveRequests(Array.isArray(lvData) ? lvData : []);
       }
+      if (myLvRes.status === 'fulfilled') {
+        const myLvData = myLvRes.value?.data || (Array.isArray(myLvRes.value) ? myLvRes.value : []);
+        setMyLeaves(Array.isArray(myLvData) ? myLvData : []);
+      }
     } catch (err) {
       addToast('Failed to load teacher portal data', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // My Leave handlers
+  const handleSubmitMyLeave = async (e) => {
+    e.preventDefault();
+    if (!myLeaveForm.reason.trim()) {
+      addToast('Please enter a reason for your leave', 'warning');
+      return;
+    }
+    try {
+      setSubmittingMyLeave(true);
+      await leaveService.submitTeacherLeave({
+        teacherName: user?.name || 'Teacher',
+        leaveDate: myLeaveForm.startDate,
+        endDate: myLeaveForm.endDate || null,
+        reason: myLeaveForm.reason.trim(),
+      });
+      addToast('Leave recorded successfully', 'success');
+      setMyLeaveModal(false);
+      setMyLeaveForm({ startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
+      const res = await leaveService.getMyTeacherLeave();
+      if (res.success && res.data) setMyLeaves(res.data);
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to record leave', 'error');
+    } finally {
+      setSubmittingMyLeave(false);
     }
   };
 
@@ -249,6 +294,57 @@ export const TeacherDashboard = () => {
 
       {/* Tab 2: Leave Requests */}
       {activeTab === 'leave' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <div className="card">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}>
+              <UserCheck size={18} className="text-primary" /> My Leave
+            </h3>
+            <button className="btn btn-primary btn-sm" onClick={() => setMyLeaveModal(true)}>
+              <Plus size={14} /> Request Leave
+            </button>
+          </div>
+          <div className="table-container">
+            <table className="table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Reason</th>
+                  <th>Submitted On</th>
+                  <th style={{ textAlign: 'center', width: '120px' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myLeaves.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>
+                      {loading ? 'Loading your leave records...' : 'No leave requested yet.'}
+                    </td>
+                  </tr>
+                ) : (
+                  myLeaves.map((lv) => (
+                    <tr key={lv.id}>
+                      <td style={{ fontWeight: 600 }}>
+                        {lv.leaveDate || lv.startDate}
+                        {lv.endDate ? ` to ${lv.endDate}` : ''}
+                      </td>
+                      <td style={{ maxWidth: '320px', fontSize: '0.875rem' }}>{lv.reason}</td>
+                      <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                        {(lv.submittedAt || lv.createdAt)
+                          ? new Date(lv.submittedAt || lv.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="badge badge-success">{lv.status || 'RECORDED'}</span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="card">
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}>
@@ -316,6 +412,7 @@ export const TeacherDashboard = () => {
               </tbody>
             </table>
           </div>
+        </div>
         </div>
       )}
 
@@ -482,6 +579,57 @@ export const TeacherDashboard = () => {
               placeholder="Provide instructions for students..."
               value={hwForm.description}
               onChange={(e) => setHwForm({ ...hwForm, description: e.target.value })}
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* My Leave Modal */}
+      <Modal
+        isOpen={myLeaveModal}
+        onClose={() => setMyLeaveModal(false)}
+        title="Request Leave"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setMyLeaveModal(false)}>Cancel</button>
+            <button type="submit" form="myLeaveForm" className="btn btn-primary" disabled={submittingMyLeave}>
+              {submittingMyLeave ? 'Submitting...' : 'Submit Leave'}
+            </button>
+          </>
+        }
+      >
+        <form id="myLeaveForm" onSubmit={handleSubmitMyLeave}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">From *</label>
+              <input
+                type="date"
+                className="form-control"
+                required
+                value={myLeaveForm.startDate}
+                onChange={(e) => setMyLeaveForm({ ...myLeaveForm, startDate: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">To (optional)</label>
+              <input
+                type="date"
+                className="form-control"
+                min={myLeaveForm.startDate}
+                value={myLeaveForm.endDate}
+                onChange={(e) => setMyLeaveForm({ ...myLeaveForm, endDate: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Reason *</label>
+            <textarea
+              className="form-control"
+              rows={3}
+              required
+              placeholder="Reason for leave..."
+              value={myLeaveForm.reason}
+              onChange={(e) => setMyLeaveForm({ ...myLeaveForm, reason: e.target.value })}
             />
           </div>
         </form>
