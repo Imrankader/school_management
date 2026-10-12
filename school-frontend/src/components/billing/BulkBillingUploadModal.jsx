@@ -179,7 +179,7 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
 
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `billing_bulk_upload_errors_${displayClassName.replace(/\s+/g, '_')}_${timestamp}.xlsx`;
 
       const url = window.URL.createObjectURL(blob);
@@ -510,6 +510,8 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
                       <tr>
                         <th style={{ padding: '0.55rem 0.75rem' }}>EXCEL ROW</th>
                         <th style={{ padding: '0.55rem 0.75rem' }}>STUDENT NAME</th>
+                        <th style={{ padding: '0.55rem 0.75rem' }}>ADMISSION NO</th>
+                        <th style={{ padding: '0.55rem 0.75rem' }}>CLASS</th>
                         <th style={{ padding: '0.55rem 0.75rem' }}>ISSUE TYPE</th>
                         <th style={{ padding: '0.55rem 0.75rem' }}>DETAILS</th>
                       </tr>
@@ -521,6 +523,8 @@ export const BulkBillingUploadModal = ({ isOpen, onClose, selectedClass, onSucce
                             {err.row > 0 ? `Row ${err.row}` : 'File Header'}
                           </td>
                           <td style={{ padding: '0.55rem 0.75rem' }}>{err.studentName || '—'}</td>
+                          <td style={{ padding: '0.55rem 0.75rem' }}>{err.admissionNumber || '—'}</td>
+                          <td style={{ padding: '0.55rem 0.75rem' }}>{err.className || '—'}</td>
                           <td style={{ padding: '0.55rem 0.75rem' }}>
                             <span
                               className="badge"

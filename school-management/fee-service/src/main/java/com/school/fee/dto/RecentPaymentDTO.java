@@ -26,6 +26,7 @@ public class RecentPaymentDTO {
     private BigDecimal amountPaid;
     private LocalDate paymentDate;
     private String paymentMethod;
+    private String feeComponent;
     private String note;
     private String status;
     private LocalDateTime createdAt;

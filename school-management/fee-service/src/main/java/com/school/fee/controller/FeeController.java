@@ -4,6 +4,8 @@ import com.school.common.dto.ApiResponse;
 import com.school.fee.dto.BulkUploadBillingResult;
 import com.school.fee.dto.ClassBillingSummaryDTO;
 import com.school.fee.dto.FeeDTO;
+import com.school.fee.dto.FeeCollectionRequest;
+import com.school.fee.dto.FeeCollectionResponse;
 import com.school.fee.dto.RecentPaymentDTO;
 import com.school.fee.dto.StudentBillingRowDTO;
 import com.school.fee.entity.Payment;
@@ -112,6 +114,17 @@ public class FeeController {
                                                           @Valid @RequestBody FeeDTO dto) {
         FeeDTO updated = feeService.updateFee(id, dto);
         return ResponseEntity.ok(ApiResponse.success("Fee record updated", updated));
+    }
+
+    /** POST /api/fees/collect-fee — Collect a single student's fee with authenticated admin audit data. */
+    @PostMapping("/collect-fee")
+    public ResponseEntity<ApiResponse<FeeCollectionResponse>> collectFee(
+            @Valid @RequestBody FeeCollectionRequest request,
+            @RequestHeader("X-Authenticated-User-Id") Long adminUserId,
+            @RequestHeader("X-Authenticated-Email") String adminEmail) {
+        FeeCollectionResponse result = feeService.collectFee(request, adminUserId, adminEmail);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Payment collected successfully", result));
     }
 
     /** POST /api/fees/{feeId}/payments — Record a payment against a fee */

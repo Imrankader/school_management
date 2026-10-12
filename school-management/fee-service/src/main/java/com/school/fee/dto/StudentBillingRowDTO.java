@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.Map;
 import java.util.List;
 
 /**
@@ -29,6 +30,11 @@ public class StudentBillingRowDTO {
     private BigDecimal examFees;
     private BigDecimal outstandingAmount;
     private BigDecimal paidAmount;
+    private String currentTerm;
+    private BigDecimal currentTermAmount;
+    private BigDecimal currentTermPaidAmount;
+    private BigDecimal currentTermOutstandingAmount;
+    private Map<String, BigDecimal> outstandingByComponent;
     private BigDecimal totalAmount;
     private String status; // "settled", "partially paid", "pending", "unbilled"
     private Long feeId;

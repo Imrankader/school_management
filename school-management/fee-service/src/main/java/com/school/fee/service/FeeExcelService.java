@@ -11,6 +11,7 @@ import com.school.fee.repository.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellRangeAddressList;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +44,8 @@ public class FeeExcelService {
             "Term Fees - 3",
             "Bus Fees",
             "Exam Fees",
-            "Paid Amount"
+            "Paid Amount (This Import)",
+            "Payment For (Optional)"
     };
 
     /**
@@ -191,7 +193,6 @@ public class FeeExcelService {
                 double t3 = (fee != null && fee.getTermFees3() != null) ? fee.getTermFees3().doubleValue() : 0.0;
                 double bus = (fee != null && fee.getBusFees() != null) ? fee.getBusFees().doubleValue() : 0.0;
                 double exam = (fee != null && fee.getExamFees() != null) ? fee.getExamFees().doubleValue() : 0.0;
-                double paid = (fee != null && fee.getPaidAmount() != null) ? fee.getPaidAmount().doubleValue() : 0.0;
 
                 // Col 4: Term Fees - 1
                 Cell c4 = row.createCell(4);
@@ -218,10 +219,14 @@ public class FeeExcelService {
                 c8.setCellValue(exam);
                 c8.setCellStyle(numberStyle);
 
-                // Col 9: Paid Amount
+                // Col 9: Payment amount for this upload
                 Cell c9 = row.createCell(9);
-                c9.setCellValue(paid);
+                c9.setCellValue(0.0);
                 c9.setCellStyle(numberStyle);
+
+                Cell c10 = row.createCell(10);
+                c10.setCellValue("AUTO");
+                c10.setCellStyle(centerStyle);
 
                 // Hidden Cols: Internal Student ID & Admission Number
                 Cell cHiddenId = row.createCell(TEMPLATE_HEADERS.length);
@@ -231,6 +236,17 @@ public class FeeExcelService {
                 cHiddenAdm.setCellValue(student.getAdmissionNumber() != null ? student.getAdmissionNumber() : "");
 
                 rowIndex++;
+            }
+
+            if (rowIndex > 1) {
+                DataValidationHelper validationHelper = sheet.getDataValidationHelper();
+                DataValidationConstraint constraint = validationHelper.createExplicitListConstraint(
+                        new String[]{"AUTO", "Term 1 Fees", "Term 2 Fees", "Term 3 Fees", "Bus Fees", "Exam Fees"});
+                DataValidation validation = validationHelper.createValidation(
+                        constraint, new CellRangeAddressList(1, rowIndex - 1, 10, 10));
+                validation.setSuppressDropDownArrow(false);
+                validation.setShowErrorBox(true);
+                sheet.addValidationData(validation);
             }
 
             // Hide internal tracking columns
@@ -328,6 +344,7 @@ public class FeeExcelService {
             int busCol = -1;
             int examCol = -1;
             int paidCol = -1;
+            int paymentForCol = -1;
             int totalCol = -1;
             int outstandingCol = -1;
             int hiddenIdCol = -1;
@@ -357,8 +374,10 @@ public class FeeExcelService {
                     if (busCol == -1) busCol = c;
                 } else if (clean.contains("examfee") || clean.contains("examfees") || clean.contains("examination")) {
                     if (examCol == -1) examCol = c;
-                } else if (clean.contains("paidamount") || clean.contains("paidfee") || clean.equals("paid")) {
+                } else if (clean.contains("paidamount") || clean.contains("paymentamount") || clean.contains("paidfee") || clean.equals("paid")) {
                     if (paidCol == -1) paidCol = c;
+                } else if (clean.contains("paymentfor") || clean.contains("paymentterm") || clean.equals("feeterm")) {
+                    if (paymentForCol == -1) paymentForCol = c;
                 } else if (clean.contains("totalamount") || clean.contains("totalfee") || clean.equals("total")) {
                     if (totalCol == -1) totalCol = c;
                 } else if (clean.contains("outstanding") || clean.contains("pending")) {
@@ -547,29 +566,108 @@ public class FeeExcelService {
                 BigDecimal termFees3 = term3Col >= 0 ? parseAmount(row.getCell(term3Col), "Term Fees - 3", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
                 BigDecimal busFees = busCol >= 0 ? parseAmount(row.getCell(busCol), "Bus Fees", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
                 BigDecimal examFees = examCol >= 0 ? parseAmount(row.getCell(examCol), "Exam Fees", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
-                BigDecimal paidAmount = paidCol >= 0 ? parseAmount(row.getCell(paidCol), "Paid Amount", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                BigDecimal paymentAmount = paidCol >= 0 ? parseAmount(row.getCell(paidCol), "Payment Amount", excelRow, matchedStudent, errors) : BigDecimal.ZERO;
+                String requestedComponent = paymentForCol >= 0 ? getCellString(row.getCell(paymentForCol)) : null;
 
                 if (termFees1 == null || termFees2 == null || termFees3 == null ||
-                        busFees == null || examFees == null || paidAmount == null) {
+                    busFees == null || examFees == null || paymentAmount == null) {
                     // Numeric error already added to errors list
                     continue;
                 }
 
-                // Calculate Total & Outstanding
+                // Excel payment amounts are installments; the stored fee amount remains cumulative.
                 BigDecimal totalAmount = termFees1.add(termFees2).add(termFees3).add(busFees).add(examFees);
-                BigDecimal outstandingAmount = totalAmount.subtract(paidAmount);
-                if (outstandingAmount.compareTo(BigDecimal.ZERO) < 0) {
-                    outstandingAmount = BigDecimal.ZERO;
+                Fee existingFee = feeRepository.findByStudentIdAndClassName(
+                    matchedStudent.getId(), matchedStudent.getClassName()).orElse(null);
+                if (existingFee == null) {
+                    existingFee = feeRepository.findFirstByStudentId(matchedStudent.getId()).orElse(null);
                 }
+                BigDecimal previousPaid = existingFee != null && existingFee.getPaidAmount() != null
+                    ? existingFee.getPaidAmount()
+                    : BigDecimal.ZERO;
+                BigDecimal outstandingBeforePayment = totalAmount.subtract(previousPaid);
+                if (outstandingBeforePayment.compareTo(BigDecimal.ZERO) < 0) {
+                    errors.add(BulkUploadBillingError.builder()
+                            .row(excelRow)
+                            .studentName(matchedStudent.getName())
+                            .admissionNumber(matchedStudent.getAdmissionNumber())
+                            .className(matchedStudent.getClassName())
+                            .errorType("Billed Total Below Paid Amount")
+                            .errorMessage("The billed total of " + totalAmount.toPlainString()
+                                    + " is below the already paid amount of " + previousPaid.toPlainString() + ".")
+                            .build());
+                    continue;
+                }
+
+                Fee allocationFee = Fee.builder()
+                        .termFees1(termFees1)
+                        .termFees2(termFees2)
+                        .termFees3(termFees3)
+                        .busFees(busFees)
+                        .examFees(examFees)
+                        .totalAmount(totalAmount)
+                        .paidAmount(previousPaid)
+                        .build();
+                List<Payment> existingPayments = existingFee == null
+                        ? new ArrayList<>()
+                        : new ArrayList<>(paymentRepository.findByFeeIdOrderByPaymentDateDescIdDesc(existingFee.getId()));
+                BigDecimal recordedPaid = existingPayments.stream()
+                        .map(Payment::getAmountPaid)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                if (previousPaid.compareTo(recordedPaid) > 0) {
+                    existingPayments.add(Payment.builder()
+                            .feeId(existingFee != null ? existingFee.getId() : null)
+                            .studentId(matchedStudent.getId())
+                            .amountPaid(previousPaid.subtract(recordedPaid))
+                            .paymentMethod("LEGACY")
+                            .note("Previously paid balance; original transaction details are unavailable")
+                            .build());
+                }
+
+                FeePaymentAllocation.Summary allocation = FeePaymentAllocation.calculate(allocationFee, existingPayments);
+                String component = FeePaymentAllocation.normalizeComponent(requestedComponent);
+                if (requestedComponent != null && !requestedComponent.isBlank()
+                        && !"AUTO".equalsIgnoreCase(requestedComponent.trim()) && component == null) {
+                    errors.add(BulkUploadBillingError.builder()
+                            .row(excelRow)
+                            .studentName(matchedStudent.getName())
+                            .admissionNumber(matchedStudent.getAdmissionNumber())
+                            .className(matchedStudent.getClassName())
+                            .errorType("Invalid Payment For")
+                            .errorMessage("Choose AUTO, Term 1 Fees, Term 2 Fees, Term 3 Fees, Bus Fees, or Exam Fees.")
+                            .build());
+                    continue;
+                }
+                component = FeePaymentAllocation.resolveComponent(component, allocation);
+                if (paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    String paymentError = FeePaymentAllocation.validatePayment(component, paymentAmount, allocation);
+                    if (paymentError != null) {
+                    errors.add(BulkUploadBillingError.builder()
+                            .row(excelRow)
+                            .studentName(matchedStudent.getName())
+                            .admissionNumber(matchedStudent.getAdmissionNumber())
+                            .className(matchedStudent.getClassName())
+                            .errorType("Payment Validation")
+                            .errorMessage(paymentError)
+                            .build());
+                        continue;
+                    }
+                }
+                BigDecimal paidAmount = previousPaid.add(paymentAmount);
+                BigDecimal outstandingAmount = outstandingBeforePayment.subtract(paymentAmount);
 
                 recordsToSave.add(new FeeRecordToSave(
                         matchedStudent,
+                    existingFee,
                         termFees1,
                         termFees2,
                         termFees3,
                         busFees,
                         examFees,
                         totalAmount,
+                        paymentAmount,
+                        component,
                         paidAmount,
                         outstandingAmount
                 ));
@@ -597,10 +695,9 @@ public class FeeExcelService {
             String studentClass = rec.student.getClassName();
             distinctProcessedClasses.add(studentClass);
 
-            Fee fee = feeRepository.findByStudentIdAndClassName(rec.student.getId(), studentClass)
-                    .orElse(feeRepository.findFirstByStudentId(rec.student.getId()).orElse(null));
+            Fee fee = rec.existingFee;
 
-            FeeStatus status;
+                FeeStatus status;
             if (rec.outstandingAmount.compareTo(BigDecimal.ZERO) == 0 && rec.totalAmount.compareTo(BigDecimal.ZERO) > 0) {
                 status = FeeStatus.PAID;
             } else if (rec.paidAmount.compareTo(BigDecimal.ZERO) > 0 && rec.outstandingAmount.compareTo(BigDecimal.ZERO) > 0) {
@@ -640,7 +737,18 @@ public class FeeExcelService {
                 fee.setPendingAmount(rec.outstandingAmount);
                 fee.setStatus(status);
             }
-            feeRepository.save(fee);
+            Fee savedFee = feeRepository.save(fee);
+            if (rec.paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
+                paymentRepository.save(Payment.builder()
+                        .feeId(savedFee.getId())
+                        .studentId(savedFee.getStudentId())
+                        .amountPaid(rec.paymentAmount)
+                        .paymentDate(LocalDate.now())
+                        .paymentMethod("EXCEL")
+                        .feeComponent(rec.paymentComponent)
+                        .note("Recorded via Excel bulk upload")
+                        .build());
+            }
             savedCount++;
         }
 
@@ -803,24 +911,31 @@ public class FeeExcelService {
 
     private static class FeeRecordToSave {
         final StudentInfoDTO student;
+        final Fee existingFee;
         final BigDecimal termFees1;
         final BigDecimal termFees2;
         final BigDecimal termFees3;
         final BigDecimal busFees;
         final BigDecimal examFees;
         final BigDecimal totalAmount;
+        final BigDecimal paymentAmount;
+        final String paymentComponent;
         final BigDecimal paidAmount;
         final BigDecimal outstandingAmount;
 
-        FeeRecordToSave(StudentInfoDTO student, BigDecimal termFees1, BigDecimal termFees2, BigDecimal termFees3,
-                        BigDecimal busFees, BigDecimal examFees, BigDecimal totalAmount, BigDecimal paidAmount, BigDecimal outstandingAmount) {
+        FeeRecordToSave(StudentInfoDTO student, Fee existingFee, BigDecimal termFees1, BigDecimal termFees2, BigDecimal termFees3,
+                        BigDecimal busFees, BigDecimal examFees, BigDecimal totalAmount, BigDecimal paymentAmount,
+                        String paymentComponent, BigDecimal paidAmount, BigDecimal outstandingAmount) {
             this.student = student;
+            this.existingFee = existingFee;
             this.termFees1 = termFees1;
             this.termFees2 = termFees2;
             this.termFees3 = termFees3;
             this.busFees = busFees;
             this.examFees = examFees;
             this.totalAmount = totalAmount;
+            this.paymentAmount = paymentAmount;
+            this.paymentComponent = paymentComponent;
             this.paidAmount = paidAmount;
             this.outstandingAmount = outstandingAmount;
         }

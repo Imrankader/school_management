@@ -5,6 +5,8 @@ import com.school.common.exception.BadRequestException;
 import com.school.common.exception.ResourceNotFoundException;
 import com.school.fee.dto.ClassBillingSummaryDTO;
 import com.school.fee.dto.FeeDTO;
+import com.school.fee.dto.FeeCollectionRequest;
+import com.school.fee.dto.FeeCollectionResponse;
 import com.school.fee.dto.RecentPaymentDTO;
 import com.school.fee.dto.StudentBillingRowDTO;
 import com.school.fee.dto.StudentInfoDTO;
@@ -234,6 +236,11 @@ public class FeeService {
             BigDecimal totalAmount = BigDecimal.ZERO;
             BigDecimal paidAmount = BigDecimal.ZERO;
             BigDecimal outstandingAmount = BigDecimal.ZERO;
+            String currentTerm = null;
+            BigDecimal currentTermAmount = BigDecimal.ZERO;
+            BigDecimal currentTermPaidAmount = BigDecimal.ZERO;
+            BigDecimal currentTermOutstandingAmount = BigDecimal.ZERO;
+            Map<String, BigDecimal> outstandingByComponent = Collections.emptyMap();
             String status = "unbilled";
             Long feeId = null;
             List<Payment> payments = Collections.emptyList();
@@ -249,20 +256,24 @@ public class FeeService {
                 paidAmount = fee.getPaidAmount() != null ? fee.getPaidAmount() : BigDecimal.ZERO;
                 outstandingAmount = fee.getPendingAmount() != null ? fee.getPendingAmount() : BigDecimal.ZERO;
 
-                if (outstandingAmount.compareTo(BigDecimal.ZERO) == 0 && totalAmount.compareTo(BigDecimal.ZERO) > 0) {
+                payments = getPaymentsByFee(fee.getId());
+                FeePaymentAllocation.Summary allocation = FeePaymentAllocation.calculate(fee, payments);
+                currentTerm = allocation.currentComponent();
+                currentTermAmount = allocation.currentAmount();
+                currentTermPaidAmount = allocation.currentPaid();
+                currentTermOutstandingAmount = allocation.currentOutstanding();
+                outstandingByComponent = allocation.outstandingByComponent();
+
+                if (currentTermAmount.compareTo(BigDecimal.ZERO) == 0) {
+                    status = "unbilled";
+                } else if (currentTermOutstandingAmount.compareTo(BigDecimal.ZERO) == 0) {
                     status = "settled";
-                } else if (paidAmount.compareTo(BigDecimal.ZERO) > 0 && outstandingAmount.compareTo(BigDecimal.ZERO) > 0) {
+                } else if (currentTermPaidAmount.compareTo(BigDecimal.ZERO) > 0) {
                     status = "partially paid";
-                } else if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
+                } else if (currentTermAmount.compareTo(BigDecimal.ZERO) > 0) {
                     status = "pending";
                 } else {
                     status = "unbilled";
-                }
-
-                try {
-                    payments = paymentRepository.findByFeeIdOrderByPaymentDateDesc(fee.getId());
-                } catch (Exception e) {
-                    payments = Collections.emptyList();
                 }
             }
 
@@ -279,6 +290,11 @@ public class FeeService {
                     .examFees(examFees)
                     .outstandingAmount(outstandingAmount)
                     .paidAmount(paidAmount)
+                    .currentTerm(currentTerm)
+                    .currentTermAmount(currentTermAmount)
+                    .currentTermPaidAmount(currentTermPaidAmount)
+                    .currentTermOutstandingAmount(currentTermOutstandingAmount)
+                    .outstandingByComponent(outstandingByComponent)
                     .totalAmount(totalAmount)
                     .status(status)
                     .feeId(feeId)
@@ -349,6 +365,9 @@ public class FeeService {
         if (dto.getTotalAmount() != null && total.compareTo(BigDecimal.ZERO) == 0) {
             total = dto.getTotalAmount();
         }
+        if (paid.compareTo(total) > 0) {
+            throw new BadRequestException("Paid amount cannot exceed the billed total of " + total.toPlainString() + ".");
+        }
 
         BigDecimal pending = total.subtract(paid);
         if (pending.compareTo(BigDecimal.ZERO) < 0) {
@@ -400,7 +419,7 @@ public class FeeService {
 
         // Record initial payment transaction if paid > 0 and no payment recorded yet
         if (paid.compareTo(BigDecimal.ZERO) > 0) {
-            List<Payment> existingPayments = paymentRepository.findByFeeIdOrderByPaymentDateDesc(saved.getId());
+            List<Payment> existingPayments = paymentRepository.findByFeeIdOrderByPaymentDateDescIdDesc(saved.getId());
             if (existingPayments.isEmpty()) {
                 Payment initialPayment = Payment.builder()
                         .feeId(saved.getId())
@@ -425,6 +444,7 @@ public class FeeService {
                 .toList();
     }
 
+    @Transactional
     public FeeDTO updateFee(Long id, FeeDTO dto) {
         Fee existing = feeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Fee", "id", id));
@@ -440,6 +460,10 @@ public class FeeService {
         if (dto.getTotalAmount() != null && total.compareTo(BigDecimal.ZERO) == 0) {
             total = dto.getTotalAmount();
         }
+        if (paid.compareTo(total) > 0) {
+            throw new BadRequestException("Paid amount cannot exceed the billed total of " + total.toPlainString() + ".");
+        }
+        BigDecimal previousPaid = existing.getPaidAmount() != null ? existing.getPaidAmount() : BigDecimal.ZERO;
 
         BigDecimal pending = total.subtract(paid);
         if (pending.compareTo(BigDecimal.ZERO) < 0) pending = BigDecimal.ZERO;
@@ -458,9 +482,49 @@ public class FeeService {
         if (dto.getDescription() != null) existing.setDescription(dto.getDescription());
 
         Fee updated = feeRepository.save(existing);
+        BigDecimal paymentDelta = paid.subtract(previousPaid);
+        if (paymentDelta.compareTo(BigDecimal.ZERO) > 0) {
+            paymentRepository.save(Payment.builder()
+                .feeId(updated.getId())
+                .studentId(updated.getStudentId())
+                .amountPaid(paymentDelta)
+                .paymentDate(LocalDate.now())
+                .paymentMethod("MANUAL")
+                .note("Paid amount recorded while editing billing")
+                .build());
+        }
         log.info("Updated fee {} for student {}: {}", id, dto.getStudentId(), status);
         return toDTO(updated);
     }
+
+        @Transactional
+        public FeeCollectionResponse collectFee(FeeCollectionRequest request, Long adminUserId, String adminEmail) {
+        Fee fee = feeRepository.findById(request.getBillingId())
+            .orElseThrow(() -> new ResourceNotFoundException("Fee", "id", request.getBillingId()));
+        if (!Objects.equals(fee.getStudentId(), request.getStudentId())) {
+            throw new BadRequestException("The selected billing record does not belong to this student.");
+        }
+
+        Payment payment = Payment.builder()
+            .amountPaid(request.getPaymentAmount())
+            .paymentDate(request.getPaymentDate())
+            .paymentMethod(request.getPaymentMethod())
+            .feeComponent(request.getFeeComponent())
+            .referenceNumber(request.getReferenceNumber())
+            .adminUser(adminUserId + " (" + adminEmail + ")")
+            .note(request.getRemarks())
+            .build();
+        recordPayment(fee.getId(), payment);
+
+        Fee updated = feeRepository.findById(fee.getId())
+            .orElseThrow(() -> new ResourceNotFoundException("Fee", "id", fee.getId()));
+        return FeeCollectionResponse.builder()
+            .success(true)
+            .updatedPaidAmount(updated.getPaidAmount())
+            .updatedOutstandingAmount(updated.getPendingAmount())
+            .updatedStatus(updated.getStatus().name())
+            .build();
+        }
 
     /**
      * Record a payment against a fee.
@@ -471,14 +535,28 @@ public class FeeService {
         Fee fee = feeRepository.findById(feeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fee", "id", feeId));
 
+        BigDecimal amount = payment.getAmountPaid();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Payment amount must be greater than zero.");
+        }
+        BigDecimal currentPaid = fee.getPaidAmount() != null ? fee.getPaidAmount() : BigDecimal.ZERO;
+        BigDecimal totalAmount = fee.getTotalAmount() != null ? fee.getTotalAmount() : BigDecimal.ZERO;
+        FeePaymentAllocation.Summary allocation = getPaymentAllocation(fee);
+        String component = FeePaymentAllocation.resolveComponent(payment.getFeeComponent(), allocation);
+        String validationError = FeePaymentAllocation.validatePayment(component, amount, allocation);
+        if (validationError != null) throw new BadRequestException(validationError);
+
         payment.setFeeId(feeId);
         payment.setStudentId(fee.getStudentId());
+        payment.setFeeComponent(component);
+        if (payment.getPaymentDate() == null) {
+            payment.setPaymentDate(LocalDate.now());
+        }
         Payment saved = paymentRepository.save(payment);
 
         // Update fee totals
-        BigDecimal newPaid = fee.getPaidAmount().add(payment.getAmountPaid());
-        if (newPaid.compareTo(fee.getTotalAmount()) > 0) newPaid = fee.getTotalAmount();
-        BigDecimal newPending = fee.getTotalAmount().subtract(newPaid);
+        BigDecimal newPaid = currentPaid.add(amount);
+        BigDecimal newPending = totalAmount.subtract(newPaid);
 
         fee.setPaidAmount(newPaid);
         fee.setPendingAmount(newPending);
@@ -490,11 +568,37 @@ public class FeeService {
     }
 
     public List<Payment> getPaymentsByFee(Long feeId) {
-        return paymentRepository.findByFeeIdOrderByPaymentDateDesc(feeId);
+        List<Payment> payments = new ArrayList<>(paymentRepository.findByFeeIdOrderByPaymentDateDescIdDesc(feeId));
+        Fee fee = feeRepository.findById(feeId).orElse(null);
+        if (fee == null || fee.getPaidAmount() == null) {
+            return payments;
+        }
+
+        BigDecimal recordedAmount = payments.stream()
+                .map(Payment::getAmountPaid)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal untrackedAmount = fee.getPaidAmount().subtract(recordedAmount);
+        if (untrackedAmount.compareTo(BigDecimal.ZERO) > 0) {
+            payments.add(Payment.builder()
+                    .feeId(feeId)
+                    .studentId(fee.getStudentId())
+                    .amountPaid(untrackedAmount)
+                    .paymentMethod("LEGACY")
+                    .note("Previously paid balance; original transaction details are unavailable")
+                    .build());
+        }
+        FeePaymentAllocation.Summary allocation = FeePaymentAllocation.calculate(fee, payments);
+        for (Payment payment : payments) {
+            if (payment.getFeeComponent() == null) {
+                payment.setFeeComponent(allocation.inferredComponent(payment));
+            }
+        }
+        return payments;
     }
 
     public List<Payment> getPaymentsByStudent(Long studentId) {
-        return paymentRepository.findByStudentIdOrderByPaymentDateDesc(studentId);
+        return paymentRepository.findByStudentIdOrderByPaymentDateDescIdDesc(studentId);
     }
 
     /**
@@ -526,6 +630,15 @@ public class FeeService {
                 }
             }
 
+            Map<Long, String> componentByPaymentId = new HashMap<>();
+            for (Fee fee : feeMap.values()) {
+                for (Payment payment : getPaymentsByFee(fee.getId())) {
+                    if (payment.getId() != null && payment.getFeeComponent() != null) {
+                        componentByPaymentId.put(payment.getId(), payment.getFeeComponent());
+                    }
+                }
+            }
+
             return payments.stream().map(p -> {
                 Fee fee = feeMap.get(p.getFeeId());
                 String studentName = (fee != null && fee.getStudentName() != null) ? fee.getStudentName() : ("Student #" + p.getStudentId());
@@ -542,6 +655,7 @@ public class FeeService {
                         .amountPaid(p.getAmountPaid() != null ? p.getAmountPaid() : BigDecimal.ZERO)
                         .paymentDate(p.getPaymentDate())
                         .paymentMethod(p.getPaymentMethod() != null ? p.getPaymentMethod() : "ONLINE")
+                        .feeComponent(p.getFeeComponent() != null ? p.getFeeComponent() : componentByPaymentId.get(p.getId()))
                         .note(p.getNote())
                         .status("Paid")
                         .createdAt(p.getCreatedAt())
@@ -564,7 +678,7 @@ public class FeeService {
     }
 
     private FeeDTO toDTO(Fee fee) {
-        List<Payment> payments = paymentRepository.findByFeeIdOrderByPaymentDateDesc(fee.getId());
+        List<Payment> payments = getPaymentsByFee(fee.getId());
         return FeeDTO.builder()
                 .id(fee.getId())
                 .studentId(fee.getStudentId())
@@ -585,6 +699,13 @@ public class FeeService {
                 .dueDate(fee.getDueDate())
                 .payments(payments)
                 .build();
+    }
+
+    private FeePaymentAllocation.Summary getPaymentAllocation(Fee fee) {
+        if (fee == null || fee.getId() == null) {
+            return FeePaymentAllocation.calculate(fee, Collections.emptyList());
+        }
+        return FeePaymentAllocation.calculate(fee, getPaymentsByFee(fee.getId()));
     }
 
     public static int getClassAcademicRank(String className) {

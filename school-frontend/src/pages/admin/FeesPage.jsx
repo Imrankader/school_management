@@ -84,10 +84,14 @@ export const FeesPage = () => {
   const [selectedFeeForPayment, setSelectedFeeForPayment] = useState(null);
   const [paymentForm, setPaymentForm] = useState({
     amountPaid: 0,
+    feeComponent: 'AUTO',
     paymentDate: new Date().toISOString().split('T')[0],
-    paymentMethod: 'ONLINE',
+    paymentMethod: 'CASH',
+    referenceNumber: '',
     note: '',
   });
+  const [paymentError, setPaymentError] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
 
   // Payment History Modal
   const [historyModal, setHistoryModal] = useState(false);
@@ -105,15 +109,16 @@ export const FeesPage = () => {
 
   const handleExportBillingCSV = () => {
     if (view === 'class-details' && filteredBillingRows.length > 0) {
-      const headers = ['Admission No', 'Student Name', 'Class', 'Section', 'Total Billed', 'Amount Paid', 'Outstanding', 'Status'];
+      const headers = ['Admission No', 'Student Name', 'Class', 'Section', 'Total Billed', 'Current Term', 'Term Paid', 'Term Outstanding', 'Status'];
       const rows = filteredBillingRows.map((r) => [
         r.admissionNumber || '',
         `"${(r.studentName || '').replace(/"/g, '""')}"`,
         r.className || selectedClass || '',
         r.section || '',
         r.totalAmount || 0,
-        r.paidAmount || 0,
-        r.outstandingAmount || 0,
+        r.currentTerm || '',
+        r.currentTermPaidAmount || 0,
+        r.currentTermOutstandingAmount || 0,
         r.status || '',
       ]);
       const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -276,6 +281,30 @@ export const FeesPage = () => {
     } catch (e) {
       return dateStr;
     }
+  };
+
+  const formatDateTime = (payment) => {
+    const value = payment?.createdAt || payment?.paymentDate;
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : date.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatFeeComponent = (component) => ({
+    TERM_1: 'Term 1 Fees',
+    TERM_2: 'Term 2 Fees',
+    TERM_3: 'Term 3 Fees',
+    BUS_FEE: 'Bus Fees',
+    EXAM_FEE: 'Exam Fees',
+    MULTIPLE: 'Multiple Fee Components',
+  }[component] || (component === 'LEGACY' ? 'Unallocated Legacy Payment' : component || '—'));
+
+  const getComponentOutstanding = (fee, component) => {
+    const outstanding = fee?.outstandingByComponent?.[component];
+    if (outstanding !== undefined && outstanding !== null) return Number(outstanding);
+    return component === fee?.currentTerm ? Number(fee?.currentTermOutstandingAmount || 0) : 0;
   };
 
   // Financial Aggregates
@@ -512,13 +541,16 @@ export const FeesPage = () => {
   // Open Payment Modal
   const openPaymentModal = (row) => {
     setSelectedFeeForPayment(row);
-    const remaining = row.outstandingAmount || 0;
+    const remaining = getComponentOutstanding(row, row.currentTerm);
     setPaymentForm({
       amountPaid: remaining > 0 ? remaining : 0,
+      feeComponent: row.currentTerm || 'AUTO',
       paymentDate: new Date().toISOString().split('T')[0],
-      paymentMethod: 'ONLINE',
-      note: 'Tuition installment',
+      paymentMethod: 'CASH',
+      referenceNumber: '',
+      note: '',
     });
+    setPaymentError('');
     setPaymentModal(true);
   };
 
@@ -528,22 +560,88 @@ export const FeesPage = () => {
       addToast('Please save billing for this student before recording a payment.', 'error');
       return;
     }
+    const amount = Number(paymentForm.amountPaid);
+    const outstanding = getComponentOutstanding(selectedFeeForPayment, paymentForm.feeComponent);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentError('Payment amount must be greater than zero.');
+      return;
+    }
+    if (amount > outstanding) {
+      setPaymentError(`Payment cannot exceed outstanding balance (${formatCurrency(outstanding)}).`);
+      return;
+    }
+    if (paymentAmountError) {
+      setPaymentError(paymentAmountError);
+      return;
+    }
+    setPaymentError('');
+    setSavingPayment(true);
     try {
-      await feeService.recordPayment(selectedFeeForPayment.feeId, {
-        amountPaid: parseFloat(paymentForm.amountPaid),
+      const response = await feeService.collectFee({
+        studentId: Number(selectedFeeForPayment.studentId),
+        billingId: Number(selectedFeeForPayment.feeId),
+        paymentAmount: amount,
         paymentDate: paymentForm.paymentDate,
         paymentMethod: paymentForm.paymentMethod,
-        note: paymentForm.note,
+        feeComponent: paymentForm.feeComponent,
+        referenceNumber: paymentForm.referenceNumber.trim(),
+        remarks: paymentForm.note.trim(),
       });
-      addToast('Payment recorded successfully!', 'success');
+      addToast(amount === outstanding
+        ? `${formatFeeComponent(paymentForm.feeComponent)} will be fully paid after this payment.`
+        : `Payment recorded. Balance after payment: ${formatCurrency(outstanding - amount)}.`, 'success');
       setPaymentModal(false);
       setSelectedFeeForPayment(null);
-      loadStudentBillingForClass(selectedClass);
-      loadRecentPayments();
+      await Promise.all([
+        loadClassSummaries(),
+        selectedClass ? loadStudentBillingForClass(selectedClass) : Promise.resolve(),
+        loadRecentPayments(),
+      ]);
     } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to record payment.', 'error');
+      setPaymentError(err.response?.data?.message || err.message || 'Failed to collect payment.');
+    } finally {
+      setSavingPayment(false);
     }
   };
+
+  const selectedPaymentOutstanding = getComponentOutstanding(selectedFeeForPayment, paymentForm.feeComponent);
+  const paymentFeeBreakdown = [
+    { component: 'TERM_1', label: 'Term 1 Fees', amount: Number(selectedFeeForPayment?.termFees1 || 0) },
+    { component: 'TERM_2', label: 'Term 2 Fees', amount: Number(selectedFeeForPayment?.termFees2 || 0) },
+    { component: 'TERM_3', label: 'Term 3 Fees', amount: Number(selectedFeeForPayment?.termFees3 || 0) },
+    { component: 'EXAM_FEE', label: 'Exam Fees', amount: Number(selectedFeeForPayment?.examFees || 0) },
+    { component: 'BUS_FEE', label: 'Bus Fees', amount: Number(selectedFeeForPayment?.busFees || 0) },
+  ].map((item) => {
+    const outstanding = getComponentOutstanding(selectedFeeForPayment, item.component);
+    return { ...item, outstanding, paid: Math.max(0, item.amount - outstanding) };
+  });
+  const paymentAmount = Number(paymentForm.amountPaid);
+  const paymentAmountError = !Number.isFinite(paymentAmount) || paymentAmount <= 0
+    ? 'Enter a payment amount greater than zero.'
+    : paymentAmount > selectedPaymentOutstanding
+      ? `Payment cannot exceed outstanding balance (${formatCurrency(selectedPaymentOutstanding)}).`
+      : '';
+  const selectedFeeBreakdown = paymentFeeBreakdown.find((fee) => fee.component === paymentForm.feeComponent);
+  const paymentAmountIsValid = !paymentAmountError;
+  const balanceAfterPayment = paymentAmountIsValid
+    ? Math.max(0, selectedPaymentOutstanding - paymentAmount)
+    : selectedPaymentOutstanding;
+  const selectedFeePaidAfterPayment = (selectedFeeBreakdown?.paid || 0) + (paymentAmountIsValid ? paymentAmount : 0);
+  const statusAfterPayment = balanceAfterPayment === 0
+    ? 'Settled'
+    : selectedFeePaidAfterPayment > 0
+      ? 'Partially Paid'
+      : 'Pending';
+  const paymentAmountHelper = paymentAmountError
+    ? { text: paymentAmountError, color: '#b91c1c' }
+    : balanceAfterPayment === 0
+      ? { text: `This payment will settle ${formatFeeComponent(paymentForm.feeComponent)}.`, color: '#047857' }
+      : { text: `Balance after payment: ${formatCurrency(balanceAfterPayment)}.`, color: '#2563eb' };
+  const canSavePayment = Boolean(selectedFeeForPayment?.feeId)
+    && !paymentAmountError
+    && Boolean(paymentForm.paymentDate)
+    && Boolean(paymentForm.paymentMethod)
+    && !savingPayment;
 
   const openHistoryModal = async (row) => {
     setHistoryFee(row);
@@ -1254,8 +1352,9 @@ export const FeesPage = () => {
                   <tr>
                     <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Student</th>
                     <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Class</th>
+                    <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Fee Component</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Amount</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Payment Date</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Date &amp; Time</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Method</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
                     <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Note</th>
@@ -1264,7 +1363,7 @@ export const FeesPage = () => {
                 <tbody>
                   {loadingRecentPayments ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                           <RotateCcw size={18} className="animate-spin text-primary" />
                           <span style={{ fontSize: '0.85rem' }}>Loading recent transactions...</span>
@@ -1273,7 +1372,7 @@ export const FeesPage = () => {
                     </tr>
                   ) : recentPayments.length === 0 ? (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
+                      <td colSpan="8" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
                           <CreditCard size={28} style={{ opacity: 0.35 }} />
                           <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
@@ -1309,11 +1408,14 @@ export const FeesPage = () => {
                             {p.className || '—'}
                           </span>
                         </td>
+                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.825rem', color: 'var(--text-main)' }}>
+                          {formatFeeComponent(p.feeComponent)}
+                        </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 700, color: '#047857', fontVariantNumeric: 'tabular-nums', fontSize: '0.875rem' }}>
                           {formatCurrency(p.amountPaid)}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.825rem', color: 'var(--text-muted)' }}>
-                          {formatDate(p.paymentDate)}
+                          {formatDateTime(p)}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                           <span
@@ -1695,8 +1797,8 @@ export const FeesPage = () => {
                     <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Student Name</th>
                     <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Roll / Adm No</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Total Billed</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Paid</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Outstanding</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Current Term Paid</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Current Term Due</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '120px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Status</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center', width: '220px', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Actions</th>
                   </tr>
@@ -1754,19 +1856,20 @@ export const FeesPage = () => {
                               {formatCurrency(row.totalAmount)}
                             </td>
                             <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#047857', fontVariantNumeric: 'tabular-nums', fontSize: '0.85rem' }}>
-                              {formatCurrency(row.paidAmount)}
+                              {formatCurrency(row.currentTermPaidAmount)}
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 400 }}>{formatFeeComponent(row.currentTerm)}</div>
                             </td>
                             <td
                               style={{
                                 padding: '0.75rem 1rem',
                                 textAlign: 'right',
                                 fontWeight: 600,
-                                color: (row.outstandingAmount || 0) > 0 ? '#b91c1c' : '#047857',
+                                color: (row.currentTermOutstandingAmount || 0) > 0 ? '#b91c1c' : '#047857',
                                 fontVariantNumeric: 'tabular-nums',
                                 fontSize: '0.85rem',
                               }}
                             >
-                              {formatCurrency(row.outstandingAmount)}
+                              {formatCurrency(row.currentTermOutstandingAmount)}
                             </td>
                             <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                               {renderStudentStatusBadge(row.status)}
@@ -1780,16 +1883,18 @@ export const FeesPage = () => {
                                   style={{
                                     width: '28px',
                                     height: '28px',
+                                    order: 2,
                                     padding: 0,
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     borderRadius: '6px',
-                                    color: (row.outstandingAmount || 0) > 0 ? '#047857' : 'var(--text-muted)',
+                                    color: (row.currentTermOutstandingAmount || 0) > 0 ? '#047857' : 'var(--text-muted)',
                                   }}
-                                  disabled={!row.feeId || (row.outstandingAmount || 0) <= 0}
+                                  disabled={!row.feeId || (row.currentTermOutstandingAmount || 0) <= 0}
                                   onClick={() => openPaymentModal(row)}
-                                  title="Record Payment"
+                                  title="Collect Fee"
+                                  aria-label={`Collect fee from ${row.studentName}`}
                                 >
                                   <CreditCard size={14} />
                                 </button>
@@ -1801,6 +1906,7 @@ export const FeesPage = () => {
                                   style={{
                                     width: '28px',
                                     height: '28px',
+                                    order: 1,
                                     padding: 0,
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1821,6 +1927,7 @@ export const FeesPage = () => {
                                   style={{
                                     width: '28px',
                                     height: '28px',
+                                    order: 3,
                                     padding: 0,
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1975,85 +2082,214 @@ export const FeesPage = () => {
         }}
       />
 
-      {/* Record Payment Modal */}
+      {/* Collect Student Fee Modal */}
       <Modal
         isOpen={paymentModal}
         onClose={() => setPaymentModal(false)}
-        title="Record Payment"
+        title="Collect Student Fee"
+        maxWidth="640px"
         footer={
           <>
-            <button type="button" className="btn btn-secondary" onClick={() => setPaymentModal(false)}>
+            <button type="button" className="btn btn-secondary" onClick={() => setPaymentModal(false)} disabled={savingPayment}>
               Cancel
             </button>
-            <button type="submit" form="recordPaymentForm" className="btn btn-primary">
-              Save Payment
+            <button type="submit" form="recordPaymentForm" className="btn btn-primary" disabled={!canSavePayment}>
+              {savingPayment ? 'Saving...' : 'Collect Fee'}
             </button>
           </>
         }
       >
         <form id="recordPaymentForm" onSubmit={handleRecordPaymentSubmit}>
-          <div style={{ padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: 'var(--radius-sm)', marginBottom: '1rem', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
-              {selectedFeeForPayment?.studentName}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Class: {selectedFeeForPayment?.className} | Adm No: {selectedFeeForPayment?.admissionNumber || '—'}
-            </div>
-            <div style={{ marginTop: '0.4rem', fontSize: '0.825rem', fontWeight: 600, color: '#b91c1c' }}>
-              Current Outstanding: {formatCurrency(selectedFeeForPayment?.outstandingAmount)}
-            </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: '1rem',
+              padding: '1rem 1.25rem',
+              backgroundColor: '#f8fafc',
+              borderRadius: 'var(--radius-md, 8px)',
+              marginBottom: '1rem',
+              border: '1px solid var(--border-medium, #e2e8f0)',
+            }}
+          >
+            {[
+              ['Student Name', selectedFeeForPayment?.studentName || '—'],
+              ['Roll Number', selectedFeeForPayment?.admissionNumber || '—'],
+              ['Class', selectedFeeForPayment?.className || '—'],
+            ].map(([label, value]) => (
+              <div key={label} style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
+                <div style={{ marginTop: '0.2rem', fontSize: '0.95rem', fontWeight: 650, color: 'var(--text-main)', overflowWrap: 'anywhere' }}>{value}</div>
+              </div>
+            ))}
           </div>
 
-          <div className="form-group" style={{ marginBottom: '1rem' }}>
-            <label className="form-label">Payment Amount (₹) *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              max={selectedFeeForPayment?.outstandingAmount || 999999}
-              className="form-control"
-              required
-              value={paymentForm.amountPaid}
-              onChange={(e) => setPaymentForm({ ...paymentForm, amountPaid: e.target.value })}
-            />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.85rem', marginBottom: '1rem' }}>
+            {[
+              ['TOTAL BILLED', formatCurrency(selectedFeeForPayment?.totalAmount), 'var(--text-main)'],
+              ['TOTAL PAID', formatCurrency(selectedFeeForPayment?.paidAmount), '#059669'],
+              ['TOTAL OUTSTANDING', formatCurrency(selectedFeeForPayment?.outstandingAmount), '#dc2626'],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ padding: '0.75rem 0.9rem', background: '#f8fafc', border: '1px solid var(--border-medium, #e2e8f0)', borderRadius: 'var(--radius-md, 8px)' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>{label}</div>
+                <div style={{ marginTop: '0.25rem', fontSize: '1rem', fontWeight: 700, color }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginBottom: '1rem', border: '1px solid var(--border-medium, #e2e8f0)', borderRadius: 'var(--radius-md, 8px)', overflow: 'hidden' }}>
+            <div style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderBottom: '1px solid var(--border-subtle)', fontSize: '0.82rem', fontWeight: 650, color: 'var(--text-main)' }}>
+              Fee Breakdown
+            </div>
+            <div className="table-responsive">
+              <table className="table" style={{ margin: 0, fontSize: '0.8rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '38px' }}></th>
+                    <th>Fee Type</th>
+                    <th style={{ textAlign: 'right' }}>Total Fee</th>
+                    <th style={{ textAlign: 'right' }}>Paid Amount</th>
+                    <th style={{ textAlign: 'right' }}>Outstanding</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentFeeBreakdown.map((fee) => (
+                    <tr key={fee.component} style={{ opacity: fee.outstanding > 0 ? 1 : 0.7 }}>
+                      <td>
+                        <input
+                          type="radio"
+                          name="collectFeeComponent"
+                          aria-label={`Pay ${fee.label}`}
+                          checked={paymentForm.feeComponent === fee.component}
+                          disabled={fee.outstanding <= 0 || savingPayment}
+                          onChange={() => {
+                            setPaymentForm((current) => ({
+                              ...current,
+                              feeComponent: fee.component,
+                              amountPaid: Math.min(Number(current.amountPaid) || fee.outstanding, fee.outstanding),
+                            }));
+                            setPaymentError('');
+                          }}
+                        />
+                      </td>
+                      <td style={{ fontWeight: 600 }}>
+                        {fee.label}
+                        {fee.outstanding <= 0 && <span style={{ marginLeft: '0.4rem', color: '#059669', fontSize: '0.7rem' }}>Paid</span>}
+                      </td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(fee.amount)}</td>
+                      <td style={{ textAlign: 'right', color: '#059669', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(fee.paid)}</td>
+                      <td style={{ textAlign: 'right', color: fee.outstanding > 0 ? '#dc2626' : '#64748b', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(fee.outstanding)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
             <div className="form-group">
+              <label className="form-label">Payment Amount (₹) *</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max={selectedPaymentOutstanding}
+                className="form-input"
+                required
+                value={paymentForm.amountPaid}
+                aria-invalid={Boolean(paymentAmountError)}
+                onChange={(e) => {
+                  setPaymentForm({ ...paymentForm, amountPaid: e.target.value });
+                  setPaymentError('');
+                }}
+                style={{ height: '40px' }}
+              />
+              <div role={paymentAmountError ? 'alert' : 'status'} style={{ marginTop: '0.3rem', color: paymentAmountHelper.color, fontSize: '0.75rem' }}>
+                {paymentAmountHelper.text}
+              </div>
+            </div>
+            <div className="form-group">
               <label className="form-label">Payment Date *</label>
               <input
                 type="date"
-                className="form-control"
+                className="form-input"
                 required
                 value={paymentForm.paymentDate}
                 onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
+                style={{ height: '40px' }}
               />
             </div>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
             <div className="form-group">
               <label className="form-label">Payment Method *</label>
               <select
-                className="form-control"
+                className="form-select"
+                required
                 value={paymentForm.paymentMethod}
                 onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                style={{ height: '40px' }}
               >
-                <option value="ONLINE">Online / UPI</option>
                 <option value="CASH">Cash</option>
-                <option value="BANK">Bank Transfer</option>
+                <option value="UPI">UPI</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
+                <option value="CARD">Card</option>
                 <option value="CHEQUE">Cheque</option>
               </select>
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Note / Receipt Reference</label>
+            <label className="form-label">Reference Number</label>
             <input
               type="text"
-              className="form-control"
-              placeholder="e.g. Receipt #1042 / UPI Transaction ID"
+              className="form-input"
+              placeholder="Receipt or transaction number"
+              value={paymentForm.referenceNumber}
+              onChange={(e) => setPaymentForm({ ...paymentForm, referenceNumber: e.target.value })}
+              style={{ height: '40px' }}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Remarks / Notes</label>
+            <textarea
+              className="form-input"
+              rows="2"
               value={paymentForm.note}
               onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
             />
           </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '0.75rem', padding: '0.85rem 1rem', background: '#f8fafc', border: '1px solid var(--border-medium, #e2e8f0)', borderRadius: 'var(--radius-md, 8px)', marginTop: '1rem' }}>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>SELECTED FEE</div>
+              <div style={{ marginTop: '0.2rem', fontWeight: 650 }}>{formatFeeComponent(paymentForm.feeComponent)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>OUTSTANDING</div>
+              <div style={{ marginTop: '0.2rem', fontWeight: 650 }}>{formatCurrency(selectedPaymentOutstanding)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>PAYING NOW</div>
+              <div style={{ marginTop: '0.2rem', fontWeight: 650 }}>{formatCurrency(Number.isFinite(paymentAmount) ? paymentAmount : 0)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>BALANCE AFTER</div>
+              <div style={{ marginTop: '0.2rem', fontWeight: 700, color: '#047857' }}>{formatCurrency(balanceAfterPayment)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>STATUS AFTER</div>
+              <div style={{ marginTop: '0.2rem', fontWeight: 700, color: statusAfterPayment === 'Settled' ? '#047857' : '#b45309' }}>{statusAfterPayment}</div>
+            </div>
+          </div>
+
+          {paymentError && (
+            <div role="alert" style={{ marginTop: '0.75rem', color: '#b91c1c', fontSize: '0.825rem' }}>
+              {paymentError}
+            </div>
+          )}
         </form>
       </Modal>
 
@@ -2073,7 +2309,7 @@ export const FeesPage = () => {
             {historyFee?.studentName}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Class: {historyFee?.className} | Billed: {formatCurrency(historyFee?.totalAmount)} | Paid: {formatCurrency(historyFee?.paidAmount)}
+            Class: {historyFee?.className} | All-time billed: {formatCurrency(historyFee?.totalAmount)} | All-time paid: {formatCurrency(historyFee?.paidAmount)}
           </div>
         </div>
 
@@ -2086,19 +2322,26 @@ export const FeesPage = () => {
             <table className="table" style={{ fontSize: '0.825rem' }}>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>Date &amp; Time</th>
+                  <th>Fee Component</th>
                   <th>Amount</th>
                   <th>Method</th>
-                  <th>Note</th>
+                  <th>Reference / Remarks / Collected By</th>
                 </tr>
               </thead>
               <tbody>
                 {paymentsList.map((p) => (
-                  <tr key={p.id}>
-                    <td>{formatDate(p.paymentDate)}</td>
+                  <tr key={p.id ?? `legacy-${historyFee?.feeId}`}>
+                    <td>{formatDateTime(p)}</td>
+                    <td>{formatFeeComponent(p.feeComponent)}</td>
                     <td style={{ fontWeight: 600, color: '#047857' }}>{formatCurrency(p.amountPaid)}</td>
                     <td><span className="badge badge-primary">{p.paymentMethod || 'ONLINE'}</span></td>
-                    <td style={{ color: 'var(--text-muted)' }}>{p.note || '—'}</td>
+                    <td style={{ color: 'var(--text-muted)' }}>
+                      {p.referenceNumber && <div>Ref: {p.referenceNumber}</div>}
+                      {p.note && <div>{p.note}</div>}
+                      {p.adminUser && <div style={{ fontSize: '0.72rem' }}>Collected by {p.adminUser}</div>}
+                      {!p.referenceNumber && !p.note && !p.adminUser && '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

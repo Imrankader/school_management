@@ -1,6 +1,7 @@
 package com.school.gateway.security;
 
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,11 +48,27 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         }
 
         String token = extractBearerToken(exchange.getRequest().getHeaders());
-        if (token == null || !isValid(token)) {
+        Claims claims = token == null ? null : parseClaims(token);
+        if (claims == null) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }
-        return chain.filter(exchange);
+
+        if ("/api/fees/collect-fee".equals(path)
+                && !"ADMIN".equalsIgnoreCase(claims.get("role", String.class))) {
+            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+            return exchange.getResponse().setComplete();
+        }
+
+        var authenticatedRequest = exchange.getRequest().mutate()
+                .headers(headers -> {
+                    headers.remove("X-Authenticated-User-Id");
+                    headers.remove("X-Authenticated-Email");
+                    headers.set("X-Authenticated-User-Id", String.valueOf(claims.get("userId")));
+                    headers.set("X-Authenticated-Email", claims.getSubject());
+                })
+                .build();
+        return chain.filter(exchange.mutate().request(authenticatedRequest).build());
     }
 
     @Override
@@ -71,15 +88,15 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         return null;
     }
 
-    private boolean isValid(String token) {
+    private Claims parseClaims(String token) {
         try {
-            Jwts.parserBuilder()
+            return Jwts.parserBuilder()
                     .setSigningKey(Keys.hmacShaKeyFor(jwtSecret.getBytes()))
                     .build()
-                    .parseClaimsJws(token);
-            return true;
+                    .parseClaimsJws(token)
+                    .getBody();
         } catch (JwtException | IllegalArgumentException e) {
-            return false;
+            return null;
         }
     }
 }
