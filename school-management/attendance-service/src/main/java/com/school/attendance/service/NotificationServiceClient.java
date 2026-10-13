@@ -35,11 +35,23 @@ public class NotificationServiceClient {
     private static final String DIRECT_URI = "http://localhost:8086/api/notifications";
 
     public void notify(String audience, String message) {
+        send(Map.of("date", LocalDate.now().toString(), "audience", audience, "message", message));
+    }
+
+    /** Targets a single student's parent portal (and the admin-wide STUDENTS feed) via targetStudentId. */
+    public void notifyStudent(Long studentId, String message) {
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("date", LocalDate.now().toString());
+        body.put("audience", "STUDENTS");
+        body.put("message", message);
+        body.put("targetStudentId", studentId);
+        send(body);
+    }
+
+    private void send(Map<String, Object> body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(
-                Map.of("date", LocalDate.now().toString(), "audience", audience, "message", message),
-                headers);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
         try {
             loadBalancedRestTemplate.postForEntity(URI.create(LB_URI), entity, Void.class);
         } catch (Exception e1) {
@@ -47,7 +59,7 @@ public class NotificationServiceClient {
                 directRestTemplate.postForEntity(URI.create(DIRECT_URI), entity, Void.class);
             } catch (Exception e2) {
                 // Notification is a courtesy, not the source of truth — never fail the caller's request over it.
-                log.warn("Could not create notification for teacher leave: {}", e2.getMessage());
+                log.warn("Could not create notification: {}", e2.getMessage());
             }
         }
     }

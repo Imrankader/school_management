@@ -20,4 +20,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /** Notifications visible to a specific audience role (e.g. STUDENTS sees STUDENTS + BOTH, TEACHERS sees TEACHERS + BOTH) */
     @Query("SELECT n FROM Notification n WHERE n.audience = :role OR (:role = 'STUDENTS' AND n.audience = 'STUDENT') OR (:role = 'TEACHERS' AND n.audience = 'TEACHER') OR n.audience = 'BOTH' ORDER BY n.createdAt DESC")
     List<Notification> findByAudienceForRole(@Param("role") String role);
+
+    /** Same as above, but a student-targeted notification (targetStudentId set) only shows to that student's own portal */
+    @Query("SELECT n FROM Notification n WHERE (n.audience = :role OR (:role = 'STUDENTS' AND n.audience = 'STUDENT') OR (:role = 'TEACHERS' AND n.audience = 'TEACHER') OR n.audience = 'BOTH') AND (n.targetStudentId IS NULL OR n.targetStudentId = :studentId) ORDER BY n.createdAt DESC")
+    List<Notification> findByAudienceForRoleAndStudent(@Param("role") String role, @Param("studentId") Long studentId);
 }

@@ -33,6 +33,9 @@ public class Notification {
     @Column(nullable = false)
     private String status;     // SENT
 
+    /** Set only for a notification meant for one specific student's parent/student portal; null = broadcast to the whole audience */
+    private Long targetStudentId;
+
     @Column(nullable = false)
     private LocalDateTime createdAt;
 

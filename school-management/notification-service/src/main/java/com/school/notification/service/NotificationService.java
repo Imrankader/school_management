@@ -44,6 +44,7 @@ public class NotificationService {
                 .audience(normalizedAudience)
                 .message(dto.getMessage())
                 .status("SENT")
+                .targetStudentId(dto.getTargetStudentId())
                 .build();
 
         Notification saved = notificationRepository.save(notification);
@@ -67,6 +68,14 @@ public class NotificationService {
                 .toList();
     }
 
+    /** Parent/Student fetch, additionally filtered to broadcasts + notices targeted at their own child */
+    public List<NotificationDTO> getNotificationsForRoleAndStudent(String role, Long studentId) {
+        String normalizedRole = normalizeAudience(role);
+        return notificationRepository.findByAudienceForRoleAndStudent(normalizedRole, studentId).stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
     private NotificationDTO toDTO(Notification notification) {
         return NotificationDTO.builder()
                 .id(notification.getId())
@@ -74,6 +83,7 @@ public class NotificationService {
                 .audience(notification.getAudience())
                 .message(notification.getMessage())
                 .status(notification.getStatus())
+                .targetStudentId(notification.getTargetStudentId())
                 .createdAt(notification.getCreatedAt())
                 .build();
     }

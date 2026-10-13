@@ -32,6 +32,18 @@ public class JwtDecoder {
         }
     }
 
+    public Long getStudentId(String token) {
+        if (!StringUtils.hasText(token)) return null;
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey()).build()
+                    .parseClaimsJws(token).getBody();
+            return claims.get("studentId", Long.class);
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     public String getRole(String token) {
         if (!StringUtils.hasText(token)) return null;
         try {

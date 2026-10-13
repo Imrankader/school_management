@@ -89,8 +89,12 @@ public class NotificationController {
         if ("TEACHER".equals(role)) {
             audienceFilter = "TEACHERS";
         } else if ("PARENT".equals(role) || "STUDENT".equals(role)) {
-            // Parents and Students see student notifications
-            audienceFilter = "STUDENTS";
+            // Parents and Students see student notifications, excluding ones targeted at a different child
+            Long studentId = jwtDecoder.getStudentId(token);
+            List<NotificationDTO> notifications = studentId != null
+                    ? notificationService.getNotificationsForRoleAndStudent("STUDENTS", studentId)
+                    : notificationService.getNotificationsForRole("STUDENTS");
+            return ResponseEntity.ok(ApiResponse.success(notifications));
         } else if ("ADMIN".equals(role)) {
             // Admin can see all
             List<NotificationDTO> all = notificationService.getAllNotifications();

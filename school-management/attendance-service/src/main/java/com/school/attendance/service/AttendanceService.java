@@ -190,11 +190,13 @@ public class AttendanceService {
     }
 
     /**
-     * Parent view: Returns leaves submitted by this parent, enriched with student details.
+     * Parent view: Returns every leave record for their child, enriched with student details.
+     * Keyed by studentId (not parentId) so records the admin enters on the parent's behalf
+     * also show up here, not just the ones the parent submitted themselves.
      */
-    public List<LeaveRecordDTO> getMyLeaveRecordsEnriched(Long parentId) {
+    public List<LeaveRecordDTO> getMyLeaveRecordsByStudent(Long studentId) {
         Map<Long, StudentInfoDTO> studentMap = buildStudentMap();
-        List<LeaveRequest> requests = leaveRequestRepository.findByParentId(parentId);
+        List<LeaveRequest> requests = leaveRequestRepository.findByStudentIdOrderByCreatedAtDesc(studentId);
 
         return requests.stream()
                 .map(lr -> {
@@ -208,6 +210,40 @@ public class AttendanceService {
                     return toLeaveRecordDTO(lr, student);
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Admin records a leave directly for a student who didn't go through their parent —
+     * e.g. the parent never submitted a leave notice. No parent submission is required;
+     * parentId is stored as 0 (no real submitter) and recordedBy is set to ADMIN.
+     * Notifies the student's parent portal directly via targetStudentId.
+     */
+    public LeaveRecordDTO submitAdminLeave(Long studentId, LeaveRequest request) {
+        request.setStudentId(studentId);
+        request.setParentId(0L);
+        request.setRecordedBy("ADMIN");
+        request.setStatus("RECORDED");
+        request.setEndDate(null);
+
+        LocalDate effectiveDate = request.getLeaveDate() != null ? request.getLeaveDate() : request.getStartDate();
+        if (effectiveDate == null) {
+            effectiveDate = LocalDate.now();
+        }
+        request.setStartDate(effectiveDate);
+
+        LeaveRequest saved = leaveRequestRepository.save(request);
+        log.info("Admin recorded leave for student {} on {}", studentId, effectiveDate);
+
+        StudentInfoDTO student = studentServiceClient.getStudentById(studentId);
+        String studentName = (student != null && student.getName() != null && !student.getName().isBlank())
+                ? student.getName() : "Student #" + studentId;
+
+        String reasonSuffix = (request.getReason() != null && !request.getReason().isBlank())
+                ? ": " + request.getReason() : "";
+        notificationServiceClient.notifyStudent(studentId,
+                studentName + " is on leave on " + effectiveDate + reasonSuffix);
+
+        return toLeaveRecordDTO(saved, student);
     }
 
     public List<LeaveRequest> getAllLeaveRequests() {
@@ -304,6 +340,7 @@ public class AttendanceService {
                 .submittedAt(lr.getCreatedAt())
                 .createdAt(lr.getCreatedAt())
                 .status("RECORDED")
+                .recordedBy(lr.getRecordedBy() != null ? lr.getRecordedBy() : "PARENT")
                 .build();
     }
 

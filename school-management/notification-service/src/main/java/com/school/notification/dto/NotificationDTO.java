@@ -34,5 +34,8 @@ public class NotificationDTO {
 
     private String status;
 
+    /** Set only when this notification targets one specific student's parent/student portal */
+    private Long targetStudentId;
+
     private LocalDateTime createdAt;
 }

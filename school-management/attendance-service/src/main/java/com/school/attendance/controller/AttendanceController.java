@@ -233,7 +233,8 @@ public class AttendanceController {
     }
 
     /**
-     * GET /api/attendance/leave/my — Parent sees only their own submitted records.
+     * GET /api/attendance/leave/my — Parent sees every leave record for their child,
+     * whether they submitted it themselves or the admin recorded it on their behalf.
      */
     @GetMapping("/leave/my")
     public ResponseEntity<ApiResponse<List<LeaveRecordDTO>>> getMyLeave(HttpServletRequest httpRequest) {
@@ -245,9 +246,60 @@ public class AttendanceController {
                     .body(ApiResponse.error("Invalid or missing token"));
         }
 
-        Long parentId = jwtDecoder.getUserId(token);
-        List<LeaveRecordDTO> requests = attendanceService.getMyLeaveRecordsEnriched(parentId);
+        Long studentId = jwtDecoder.getStudentId(token);
+        if (studentId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("No student linked to your parent account. Contact admin."));
+        }
+
+        List<LeaveRecordDTO> requests = attendanceService.getMyLeaveRecordsByStudent(studentId);
         return ResponseEntity.ok(ApiResponse.success(requests));
+    }
+
+    /**
+     * POST /api/attendance/leave/admin — Admin records a leave directly for a student
+     * whose parent didn't submit one. Notifies the student's parent portal.
+     */
+    @PostMapping("/leave/admin")
+    public ResponseEntity<ApiResponse<LeaveRecordDTO>> submitAdminLeave(
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<LeaveRecordDTO>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
+
+        Object studentIdRaw = body.get("studentId");
+        if (studentIdRaw == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("studentId is required."));
+        }
+        Long studentId;
+        try {
+            studentId = Long.valueOf(studentIdRaw.toString());
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("studentId must be a number."));
+        }
+
+        String leaveDateStr = body.get("leaveDate") != null ? body.get("leaveDate").toString()
+                : (body.get("startDate") != null ? body.get("startDate").toString() : null);
+        String reason = body.get("reason") != null ? body.get("reason").toString() : null;
+
+        if (leaveDateStr == null || leaveDateStr.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Leave date is required."));
+        }
+        if (reason == null || reason.trim().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Leave reason is required."));
+        }
+
+        LeaveRequest request = new LeaveRequest();
+        request.setStartDate(java.time.LocalDate.parse(leaveDateStr));
+        request.setReason(reason.trim());
+
+        LeaveRecordDTO saved = attendanceService.submitAdminLeave(studentId, request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Leave recorded and the parent notified", saved));
     }
 
     // ---- Teacher's own leave ----

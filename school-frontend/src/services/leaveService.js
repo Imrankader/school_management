@@ -13,6 +13,13 @@ export const leaveService = {
     return response.data;
   },
 
+  // Admin records a leave directly for a student whose parent didn't submit one.
+  // Notifies the student's parent portal.
+  submitAdminLeave: async (data) => {
+    const response = await api.post('/api/attendance/leave/admin', data);
+    return response.data;
+  },
+
   // Teacher get leave records for assigned class/section (backend-filtered)
   getTeacherLeaves: async () => {
     const response = await api.get('/api/attendance/leave/teacher');

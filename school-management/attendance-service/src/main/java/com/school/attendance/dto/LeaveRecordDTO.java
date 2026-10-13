@@ -47,4 +47,7 @@ public class LeaveRecordDTO {
 
     /** Always RECORDED — no approval/rejection workflow */
     private String status;
+
+    /** PARENT (self-submitted) or ADMIN (recorded on the parent's behalf) */
+    private String recordedBy;
 }

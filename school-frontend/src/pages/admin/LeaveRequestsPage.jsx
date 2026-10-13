@@ -1,25 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { leaveService } from '../../services/leaveService';
 import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { toDisplayClassName } from '../../utils/academicClassOrder';
-import { CalendarCheck2, FileText, Search, RefreshCw, User } from 'lucide-react';
+import { CalendarCheck2, FileText, Search, RefreshCw, User, Plus, X } from 'lucide-react';
 
 /**
  * Admin Leave Records page.
- * Read-only view of all submitted leave records.
- * NO approve/reject workflow — leave is recorded directly when parent submits.
+ * Read-only view of all submitted leave records, plus the ability for the admin to
+ * record a leave directly for a student whose parent never submitted one — this
+ * notifies that student's parent portal.
  */
 export const LeaveRequestsPage = () => {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [studentsMap, setStudentsMap] = useState({});
+  const [allStudents, setAllStudents] = useState([]);
+  const [leaveReasons, setLeaveReasons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { addToast } = useToast();
 
+  const [showMarkModal, setShowMarkModal] = useState(false);
+  const [studentQuery, setStudentQuery] = useState('');
+  const [markForm, setMarkForm] = useState({ studentId: '', leaveDate: '', selectedReasonId: '', customReason: '' });
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     loadLeaveRequests();
+    leaveService.getActiveReasons().then((res) => {
+      if (res.success && res.data) setLeaveReasons(res.data);
+    }).catch(() => {});
   }, []);
 
   const loadLeaveRequests = async () => {
@@ -44,6 +55,7 @@ export const LeaveRequestsPage = () => {
           map[s.id] = s;
         });
         setStudentsMap(map);
+        setAllStudents(list);
       }
     } catch (err) {
       addToast('Failed to load leave records', 'error');
@@ -65,12 +77,78 @@ export const LeaveRequestsPage = () => {
     );
   });
 
+  const studentMatches = useMemo(() => {
+    const term = studentQuery.trim().toLowerCase();
+    const list = term
+      ? allStudents.filter((s) =>
+          (s.name || '').toLowerCase().includes(term) ||
+          (s.admissionNumber || '').toLowerCase().includes(term) ||
+          (s.className || '').toLowerCase().includes(term))
+      : allStudents;
+    return list.slice(0, 50);
+  }, [studentQuery, allStudents]);
+
+  const selectedStudent = markForm.studentId ? studentsMap[markForm.studentId] : null;
+
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
     try {
       return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     } catch {
       return dateStr;
+    }
+  };
+
+  const openMarkModal = () => {
+    setMarkForm({ studentId: '', leaveDate: '', selectedReasonId: '', customReason: '' });
+    setStudentQuery('');
+    setShowMarkModal(true);
+  };
+
+  const handleMarkLeave = async (e) => {
+    e.preventDefault();
+    if (!markForm.studentId) {
+      addToast('Please select a student.', 'error');
+      return;
+    }
+    if (!markForm.leaveDate) {
+      addToast('Please select a leave date.', 'error');
+      return;
+    }
+    let reasonText = '';
+    if (markForm.selectedReasonId === 'OTHER') {
+      if (!markForm.customReason.trim()) {
+        addToast('Please enter a reason.', 'error');
+        return;
+      }
+      reasonText = markForm.customReason.trim();
+    } else if (markForm.selectedReasonId) {
+      const found = leaveReasons.find((r) => String(r.id) === String(markForm.selectedReasonId));
+      reasonText = found ? found.englishReason : '';
+    } else {
+      addToast('Please select a reason.', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await leaveService.submitAdminLeave({
+        studentId: markForm.studentId,
+        leaveDate: markForm.leaveDate,
+        reason: reasonText,
+      });
+      if (res.success) {
+        const name = selectedStudent?.name || 'Student';
+        addToast(`Leave recorded — ${name}'s parent has been notified.`, 'success');
+        setShowMarkModal(false);
+        loadLeaveRequests();
+      } else {
+        addToast(res.message || 'Failed to record leave', 'error');
+      }
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to record leave', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -83,7 +161,7 @@ export const LeaveRequestsPage = () => {
         <div>
           <h1 className="page-title">Leave Records</h1>
           <p className="page-subtitle">
-            Submitted student absence records from parents — recorded directly into the system.
+            Student absence records — submitted by parents, or recorded directly by admin.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -98,6 +176,10 @@ export const LeaveRequestsPage = () => {
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={openMarkModal}>
+            <Plus size={14} />
+            <span>Mark Student on Leave</span>
           </button>
         </div>
       </div>
@@ -127,7 +209,7 @@ export const LeaveRequestsPage = () => {
 
       {/* Leave Table */}
       <div className="table-container">
-        <table className="table" style={{ width: '100%', minWidth: '780px' }}>
+        <table className="table" style={{ width: '100%', minWidth: '820px' }}>
           <thead>
             <tr>
               <th style={{ width: '90px' }}>Record #</th>
@@ -137,7 +219,7 @@ export const LeaveRequestsPage = () => {
               <th>Leave Date</th>
               <th>Reason</th>
               <th>Submitted On</th>
-              <th style={{ textAlign: 'center', width: '120px' }}>Status</th>
+              <th style={{ textAlign: 'center', width: '110px' }}>Recorded By</th>
             </tr>
           </thead>
           <tbody>
@@ -163,6 +245,7 @@ export const LeaveRequestsPage = () => {
                   : '—';
                 const leaveDate = req.leaveDate || req.startDate || '—';
                 const submittedOn = req.submittedAt || req.createdAt ? formatDate(req.submittedAt || req.createdAt) : '—';
+                const recordedByAdmin = req.recordedBy === 'ADMIN';
 
                 return (
                   <tr key={recId}>
@@ -188,8 +271,8 @@ export const LeaveRequestsPage = () => {
                       {submittedOn}
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span className="badge badge-primary">
-                        RECORDED
+                      <span className={`badge ${recordedByAdmin ? 'badge-warning' : 'badge-secondary'}`}>
+                        {recordedByAdmin ? 'Admin' : 'Parent'}
                       </span>
                     </td>
                   </tr>
@@ -199,6 +282,161 @@ export const LeaveRequestsPage = () => {
           </tbody>
         </table>
       </div>
+
+      {/* Mark Student on Leave Modal */}
+      {showMarkModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+          }}
+          onClick={() => !submitting && setShowMarkModal(false)}
+        >
+          <div
+            className="card"
+            style={{ width: '480px', maxWidth: '92vw', maxHeight: '88vh', overflowY: 'auto', padding: '1.5rem' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CalendarCheck2 size={18} /> Mark Student on Leave
+              </h3>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline"
+                onClick={() => setShowMarkModal(false)}
+                disabled={submitting}
+                style={{ padding: '0.25rem 0.5rem' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: '1rem' }}>
+              For a student who is absent without the parent submitting a leave notice. The student's parent portal will be notified.
+            </p>
+
+            <form onSubmit={handleMarkLeave}>
+              <div className="form-group">
+                <label className="form-label">Student *</label>
+                {!markForm.studentId ? (
+                  <>
+                    <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
+                      <Search size={14} style={{ position: 'absolute', left: '0.6rem', top: '0.65rem', color: 'var(--text-muted)' }} />
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ paddingLeft: '1.9rem' }}
+                        placeholder="Search student by name, admission no, or class..."
+                        value={studentQuery}
+                        onChange={(e) => setStudentQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                      {studentMatches.length === 0 ? (
+                        <div style={{ padding: '0.75rem', color: 'var(--text-muted)', fontSize: '0.875rem', textAlign: 'center' }}>
+                          No students found.
+                        </div>
+                      ) : (
+                        studentMatches.map((s) => (
+                          <div
+                            key={s.id}
+                            onClick={() => setMarkForm({ ...markForm, studentId: s.id })}
+                            style={{
+                              padding: '0.5rem 0.75rem', cursor: 'pointer', display: 'flex',
+                              justifyContent: 'space-between', alignItems: 'center',
+                              borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            <span style={{ fontWeight: 600 }}>{s.name}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                              {toDisplayClassName(s.className)}{s.section ? ` (${s.section})` : ''} · {s.admissionNumber}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '0.6rem 0.75rem', border: '1px solid var(--border-color)', borderRadius: '6px',
+                    background: 'var(--bg-secondary)',
+                  }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+                      <User size={14} /> {selectedStudent?.name}
+                      <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                        ({toDisplayClassName(selectedStudent?.className)}{selectedStudent?.section ? ` - ${selectedStudent.section}` : ''})
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline"
+                      onClick={() => setMarkForm({ ...markForm, studentId: '' })}
+                      style={{ padding: '0.15rem 0.5rem', fontSize: '0.75rem' }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Leave Date *</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={markForm.leaveDate}
+                  onChange={(e) => setMarkForm({ ...markForm, leaveDate: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Reason *</label>
+                <select
+                  className="form-input"
+                  value={markForm.selectedReasonId}
+                  onChange={(e) => setMarkForm({ ...markForm, selectedReasonId: e.target.value })}
+                  required
+                >
+                  <option value="">Select a reason...</option>
+                  {leaveReasons.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.englishReason}{r.tamilMeaning ? ` (${r.tamilMeaning})` : ''}
+                    </option>
+                  ))}
+                  <option value="OTHER">Other (specify)</option>
+                </select>
+              </div>
+
+              {markForm.selectedReasonId === 'OTHER' && (
+                <div className="form-group">
+                  <label className="form-label">Specify Reason *</label>
+                  <textarea
+                    className="form-input"
+                    rows={2}
+                    value={markForm.customReason}
+                    onChange={(e) => setMarkForm({ ...markForm, customReason: e.target.value })}
+                    placeholder="Enter the reason for leave"
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={submitting}
+                style={{ width: '100%', marginTop: '0.5rem' }}
+              >
+                {submitting ? 'Recording...' : 'Record Leave & Notify Parent'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

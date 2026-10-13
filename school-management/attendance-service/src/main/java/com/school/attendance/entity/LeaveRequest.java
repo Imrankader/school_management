@@ -48,6 +48,11 @@ public class LeaveRequest {
 
     private String reviewNote;
 
+    /** Who created this record: PARENT (self-submitted) or ADMIN (recorded on the parent's behalf) */
+    @Column(length = 20)
+    @Builder.Default
+    private String recordedBy = "PARENT";
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
