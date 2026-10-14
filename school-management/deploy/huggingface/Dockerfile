@@ -19,6 +19,11 @@ COPY --from=build /build/api-gateway/target/*.jar api-gateway.jar
 COPY deploy/huggingface/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 USER user
-ENV JAVA_TOOL_OPTIONS="-Xmx512m -Xss512k -XX:+UseSerialGC"
+# Tuned for the production host (2 vCPU / 3.7GB, 8 JVMs in one container) — same settings
+# every live deploy has run under since the Singapore move; verified in every local rehearsal too.
+ENV JAVA_TOOL_OPTIONS="-Xmx112m -Xms32m -Xss256k -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=32m -XX:MaxDirectMemorySize=16m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1"
+ENV SPRING_MAIN_LAZY_INITIALIZATION=true
+ENV SERVER_TOMCAT_THREADS_MAX=20
+ENV SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3
 EXPOSE 7860
 CMD ["/app/start.sh"]
