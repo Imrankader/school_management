@@ -50,4 +50,7 @@ public class LeaveRecordDTO {
 
     /** PARENT (self-submitted) or ADMIN (recorded on the parent's behalf) */
     private String recordedBy;
+
+    /** Which batch/session the leave applies to (admin-recorded leaves only); null for parent-submitted leaves */
+    private String session;
 }

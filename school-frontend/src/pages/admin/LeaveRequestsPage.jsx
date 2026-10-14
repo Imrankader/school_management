@@ -6,6 +6,15 @@ import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { toDisplayClassName } from '../../utils/academicClassOrder';
 import { CalendarCheck2, FileText, Search, RefreshCw, User, Plus, X } from 'lucide-react';
 
+const SESSION_OPTIONS = [
+  '5 AM - 7 AM',
+  '9 AM - 12 Noon',
+  '4 PM - 7 PM',
+  '6 PM - 8:30 PM',
+  'Morning Session',
+  'Afternoon Session',
+];
+
 /**
  * Admin Leave Records page.
  * Read-only view of all submitted leave records, plus the ability for the admin to
@@ -23,8 +32,9 @@ export const LeaveRequestsPage = () => {
 
   const [showMarkModal, setShowMarkModal] = useState(false);
   const [studentQuery, setStudentQuery] = useState('');
-  const [markForm, setMarkForm] = useState({ studentId: '', leaveDate: '', selectedReasonId: '', customReason: '' });
+  const [markForm, setMarkForm] = useState({ studentId: '', leaveDate: '', session: '', selectedReasonId: '', customReason: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [filterDate, setFilterDate] = useState('');
 
   useEffect(() => {
     loadLeaveRequests();
@@ -67,7 +77,7 @@ export const LeaveRequestsPage = () => {
   const filtered = leaveRequests.filter((r) => {
     const term = searchTerm.toLowerCase();
     const stu = studentsMap[r.studentId];
-    return (
+    const matchesSearch = (
       String(r.studentId).includes(term) ||
       (r.reason || '').toLowerCase().includes(term) ||
       (r.startDate || '').includes(term) ||
@@ -75,6 +85,8 @@ export const LeaveRequestsPage = () => {
       (stu?.admissionNumber || '').toLowerCase().includes(term) ||
       (stu?.className || '').toLowerCase().includes(term)
     );
+    const matchesDate = !filterDate || (r.leaveDate || r.startDate) === filterDate;
+    return matchesSearch && matchesDate;
   });
 
   const studentMatches = useMemo(() => {
@@ -100,7 +112,7 @@ export const LeaveRequestsPage = () => {
   };
 
   const openMarkModal = () => {
-    setMarkForm({ studentId: '', leaveDate: '', selectedReasonId: '', customReason: '' });
+    setMarkForm({ studentId: '', leaveDate: '', session: '', selectedReasonId: '', customReason: '' });
     setStudentQuery('');
     setShowMarkModal(true);
   };
@@ -113,6 +125,10 @@ export const LeaveRequestsPage = () => {
     }
     if (!markForm.leaveDate) {
       addToast('Please select a leave date.', 'error');
+      return;
+    }
+    if (!markForm.session) {
+      addToast('Please select a session.', 'error');
       return;
     }
     let reasonText = '';
@@ -135,6 +151,7 @@ export const LeaveRequestsPage = () => {
       const res = await leaveService.submitAdminLeave({
         studentId: markForm.studentId,
         leaveDate: markForm.leaveDate,
+        session: markForm.session,
         reason: reasonText,
       });
       if (res.success) {
@@ -205,18 +222,36 @@ export const LeaveRequestsPage = () => {
             Clear
           </button>
         )}
+        <input
+          type="date"
+          className="form-input"
+          value={filterDate}
+          onChange={(e) => setFilterDate(e.target.value)}
+          style={{ width: 'auto' }}
+          title="Filter by leave date"
+        />
+        {filterDate && (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            onClick={() => setFilterDate('')}
+            style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+          >
+            Clear Date
+          </button>
+        )}
       </div>
 
       {/* Leave Table */}
       <div className="table-container">
-        <table className="table" style={{ width: '100%', minWidth: '820px' }}>
+        <table className="table" style={{ width: '100%', minWidth: '860px' }}>
           <thead>
             <tr>
-              <th style={{ width: '90px' }}>Record #</th>
-              <th>Student Name</th>
-              <th>Admission No</th>
-              <th>Class & Section</th>
+              <th style={{ width: '60px' }}>S.No</th>
+              <th>Name</th>
+              <th>Class & Sec</th>
               <th>Leave Date</th>
+              <th>Session</th>
               <th>Reason</th>
               <th>Submitted On</th>
               <th style={{ textAlign: 'center', width: '110px' }}>Recorded By</th>
@@ -228,16 +263,15 @@ export const LeaveRequestsPage = () => {
                 <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
                   <FileText size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
                   <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    {loading ? 'Loading leave records...' : searchTerm ? 'No records match your search.' : 'No leave records submitted yet.'}
+                    {loading ? 'Loading leave records...' : (searchTerm || filterDate) ? 'No records match your search.' : 'No leave records submitted yet.'}
                   </div>
                 </td>
               </tr>
             ) : (
-              filtered.map((req) => {
+              filtered.map((req, idx) => {
                 const stu = studentsMap[req.studentId];
                 const recId = req.recordId || req.id;
                 const studentName = req.studentName || stu?.name || `Student #${req.studentId}`;
-                const admissionNo = req.admissionNumber || stu?.admissionNumber || '—';
                 const rawClass = req.className || stu?.className;
                 const section = req.section || stu?.section || '';
                 const classDisplay = rawClass
@@ -249,12 +283,9 @@ export const LeaveRequestsPage = () => {
 
                 return (
                   <tr key={recId}>
-                    <td><strong>#{recId}</strong></td>
+                    <td><strong>{idx + 1}</strong></td>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                       {studentName}
-                    </td>
-                    <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {admissionNo}
                     </td>
                     <td>
                       <span className="badge badge-primary">
@@ -263,6 +294,9 @@ export const LeaveRequestsPage = () => {
                     </td>
                     <td style={{ fontWeight: 600 }}>
                       {leaveDate}
+                    </td>
+                    <td style={{ fontSize: '0.8125rem' }}>
+                      {req.session || '—'}
                     </td>
                     <td style={{ maxWidth: '300px', fontSize: '0.875rem' }}>
                       {req.reason || '—'}
@@ -383,15 +417,32 @@ export const LeaveRequestsPage = () => {
                 )}
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Leave Date *</label>
-                <input
-                  type="date"
-                  className="form-input"
-                  value={markForm.leaveDate}
-                  onChange={(e) => setMarkForm({ ...markForm, leaveDate: e.target.value })}
-                  required
-                />
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Leave Date *</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={markForm.leaveDate}
+                    onChange={(e) => setMarkForm({ ...markForm, leaveDate: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Session *</label>
+                  <select
+                    className="form-input"
+                    value={markForm.session}
+                    onChange={(e) => setMarkForm({ ...markForm, session: e.target.value })}
+                    required
+                  >
+                    <option value="">Select...</option>
+                    {SESSION_OPTIONS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="form-group">

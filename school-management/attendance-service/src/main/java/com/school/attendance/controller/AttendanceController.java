@@ -283,6 +283,7 @@ public class AttendanceController {
         String leaveDateStr = body.get("leaveDate") != null ? body.get("leaveDate").toString()
                 : (body.get("startDate") != null ? body.get("startDate").toString() : null);
         String reason = body.get("reason") != null ? body.get("reason").toString() : null;
+        String session = body.get("session") != null ? body.get("session").toString() : null;
 
         if (leaveDateStr == null || leaveDateStr.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -292,10 +293,15 @@ public class AttendanceController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(ApiResponse.error("Leave reason is required."));
         }
+        if (session == null || session.trim().isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.error("Session is required."));
+        }
 
         LeaveRequest request = new LeaveRequest();
         request.setStartDate(java.time.LocalDate.parse(leaveDateStr));
         request.setReason(reason.trim());
+        request.setSession(session.trim());
 
         LeaveRecordDTO saved = attendanceService.submitAdminLeave(studentId, request);
         return ResponseEntity.status(HttpStatus.CREATED)

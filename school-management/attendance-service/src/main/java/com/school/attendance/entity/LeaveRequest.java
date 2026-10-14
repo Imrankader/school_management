@@ -53,6 +53,9 @@ public class LeaveRequest {
     @Builder.Default
     private String recordedBy = "PARENT";
 
+    /** Which batch/session the leave applies to (admin-recorded leaves only, e.g. "Morning Session"); null for parent-submitted leaves */
+    private String session;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

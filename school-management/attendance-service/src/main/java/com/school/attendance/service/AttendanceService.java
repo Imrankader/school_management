@@ -232,16 +232,18 @@ public class AttendanceService {
         request.setStartDate(effectiveDate);
 
         LeaveRequest saved = leaveRequestRepository.save(request);
-        log.info("Admin recorded leave for student {} on {}", studentId, effectiveDate);
+        log.info("Admin recorded leave for student {} on {} ({})", studentId, effectiveDate, request.getSession());
 
         StudentInfoDTO student = studentServiceClient.getStudentById(studentId);
         String studentName = (student != null && student.getName() != null && !student.getName().isBlank())
                 ? student.getName() : "Student #" + studentId;
 
+        String sessionSuffix = (request.getSession() != null && !request.getSession().isBlank())
+                ? " (" + request.getSession() + ")" : "";
         String reasonSuffix = (request.getReason() != null && !request.getReason().isBlank())
                 ? ": " + request.getReason() : "";
         notificationServiceClient.notifyStudent(studentId,
-                studentName + " is on leave on " + effectiveDate + reasonSuffix);
+                studentName + " is on leave on " + effectiveDate + sessionSuffix + reasonSuffix);
 
         return toLeaveRecordDTO(saved, student);
     }
@@ -341,6 +343,7 @@ public class AttendanceService {
                 .createdAt(lr.getCreatedAt())
                 .status("RECORDED")
                 .recordedBy(lr.getRecordedBy() != null ? lr.getRecordedBy() : "PARENT")
+                .session(lr.getSession())
                 .build();
     }
 
