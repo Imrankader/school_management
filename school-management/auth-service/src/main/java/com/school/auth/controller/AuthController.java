@@ -1,5 +1,6 @@
 package com.school.auth.controller;
 
+import com.school.auth.dto.AuditLogDTO;
 import com.school.auth.dto.AuthResponse;
 import com.school.auth.dto.LoginRequest;
 import com.school.auth.dto.RegisterRequest;
@@ -107,6 +108,25 @@ public class AuthController {
             @RequestBody java.util.Map<String, String> body) {
         userService.resetPassword(id, body.get("newPassword"));
         return ResponseEntity.ok(ApiResponse.success("Password updated", null));
+    }
+
+    /**
+     * DELETE /api/auth/staff/{id} — Admin deletes a Teacher or Admin account. ADMIN only
+     * (enforced by SecurityConfig). Refuses to delete your own account or the last admin.
+     */
+    @DeleteMapping("/staff/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteStaff(@PathVariable("id") Long id) {
+        userService.deleteStaff(id);
+        return ResponseEntity.ok(ApiResponse.success("Staff account deleted", null));
+    }
+
+    /**
+     * GET /api/auth/audit-log — Recent account-management actions (staff created/deleted,
+     * password resets), newest first. ADMIN only (enforced by SecurityConfig).
+     */
+    @GetMapping("/audit-log")
+    public ResponseEntity<ApiResponse<List<AuditLogDTO>>> getAuditLog() {
+        return ResponseEntity.ok(ApiResponse.success(userService.getRecentAuditLog()));
     }
 
     private boolean isAdminCaller() {

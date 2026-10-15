@@ -1,10 +1,13 @@
 package com.school.auth.service;
 
+import com.school.auth.dto.AuditLogDTO;
 import com.school.auth.dto.AuthResponse;
 import com.school.auth.dto.LoginRequest;
 import com.school.auth.dto.RegisterRequest;
 import com.school.auth.dto.UserSummaryDTO;
+import com.school.auth.entity.AuditLogEntry;
 import com.school.auth.entity.User;
+import com.school.auth.repository.AuditLogRepository;
 import com.school.auth.repository.UserRepository;
 import com.school.auth.security.JwtUtil;
 import com.school.common.enums.Role;
@@ -12,11 +15,14 @@ import com.school.common.exception.BadRequestException;
 import com.school.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -31,6 +37,24 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final StudentServiceClient studentServiceClient;
+    private final AuditLogRepository auditLogRepository;
+
+    /** The email of whoever's JWT is driving the current request, or "system" outside a request. */
+    private String currentActorEmail() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return (authentication != null && authentication.getName() != null) ? authentication.getName() : "system";
+    }
+
+    private void logAudit(String action, String targetEmail, String targetRole, String details) {
+        auditLogRepository.save(AuditLogEntry.builder()
+                .actorEmail(currentActorEmail())
+                .action(action)
+                .targetEmail(targetEmail)
+                .targetRole(targetRole)
+                .details(details)
+                .createdAt(LocalDateTime.now())
+                .build());
+    }
 
     /**
      * Register a new user. For PARENT role, studentId should be provided.
@@ -52,6 +76,10 @@ public class UserService {
 
         User savedUser = userRepository.save(user);
         log.info("Registered new user: {} with role: {}", savedUser.getEmail(), savedUser.getRole());
+        if (savedUser.getRole() != Role.PARENT) {
+            // Only an authenticated ADMIN can reach this branch for non-PARENT roles (enforced in the controller).
+            logAudit("CREATE_STAFF", savedUser.getEmail(), savedUser.getRole().name(), null);
+        }
 
         String token = jwtUtil.generateToken(
                 savedUser.getEmail(),
@@ -260,5 +288,45 @@ public class UserService {
         user.setPassword(passwordEncoder.encode(newPassword.trim()));
         userRepository.save(user);
         log.info("Admin reset password for user id: {} ({})", userId, user.getEmail());
+        logAudit("RESET_PASSWORD", user.getEmail(), user.getRole().name(), null);
+    }
+
+    /**
+     * Admin deletes a staff (ADMIN/TEACHER) account. Refuses to delete your own account or the
+     * last remaining administrator, so the school can never lock itself out of the admin portal.
+     */
+    public void deleteStaff(Long userId) {
+        String actorEmail = currentActorEmail();
+        User target = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+
+        if (target.getRole() != Role.ADMIN && target.getRole() != Role.TEACHER) {
+            throw new BadRequestException("Only Admin or Teacher accounts can be deleted here.");
+        }
+        if (target.getEmail().equalsIgnoreCase(actorEmail)) {
+            throw new BadRequestException("You cannot delete your own account.");
+        }
+        if (target.getRole() == Role.ADMIN && userRepository.findByRole(Role.ADMIN).size() <= 1) {
+            throw new BadRequestException("Cannot delete the last remaining administrator account.");
+        }
+
+        userRepository.delete(target);
+        log.info("{} deleted {} account: {}", actorEmail, target.getRole(), target.getEmail());
+        logAudit("DELETE_STAFF", target.getEmail(), target.getRole().name(), null);
+    }
+
+    /** Most recent account-management actions (staff created/deleted, password resets). ADMIN only. */
+    public List<AuditLogDTO> getRecentAuditLog() {
+        return auditLogRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, 100)).stream()
+                .map(e -> AuditLogDTO.builder()
+                        .id(e.getId())
+                        .actorEmail(e.getActorEmail())
+                        .action(e.getAction())
+                        .targetEmail(e.getTargetEmail())
+                        .targetRole(e.getTargetRole())
+                        .details(e.getDetails())
+                        .createdAt(e.getCreatedAt())
+                        .build())
+                .toList();
     }
 }

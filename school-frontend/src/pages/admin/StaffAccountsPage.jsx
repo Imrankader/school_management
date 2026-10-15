@@ -4,7 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
-import { ShieldCheck, Search, Mail, KeyRound, GraduationCap, UserPlus } from 'lucide-react';
+import { ShieldCheck, Search, Mail, KeyRound, GraduationCap, UserPlus, Trash2, AlertCircle, History } from 'lucide-react';
 
 const EMPTY_ADD_FORM = { name: '', email: '', password: '', role: 'TEACHER', assignedClass: '', assignedSection: '' };
 
@@ -21,10 +21,17 @@ export const StaffAccountsPage = () => {
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
   const [addingStaff, setAddingStaff] = useState(false);
 
+  const [deleteModalUser, setDeleteModalUser] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [auditLog, setAuditLog] = useState([]);
+  const [showActivityLog, setShowActivityLog] = useState(false);
+
   const { addToast } = useToast();
 
   useEffect(() => {
     loadStaff();
+    loadAuditLog();
   }, []);
 
   const loadStaff = async () => {
@@ -36,6 +43,46 @@ export const StaffAccountsPage = () => {
       addToast('Failed to load staff accounts', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAuditLog = async () => {
+    try {
+      const res = await authService.getAuditLog();
+      setAuditLog(res.success && res.data ? res.data : []);
+    } catch (err) {
+      // Non-critical: the activity log is a convenience view, not core functionality.
+      console.error('Failed to load activity log', err);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModalUser) return;
+    setDeleting(true);
+    try {
+      await authService.deleteStaff(deleteModalUser.id);
+      addToast(`Deleted ${deleteModalUser.role === 'ADMIN' ? 'Administrator' : 'Teacher'} account: ${deleteModalUser.name}.`, 'success');
+      setDeleteModalUser(null);
+      loadStaff();
+      loadAuditLog();
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete staff account', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const describeAuditEntry = (entry) => {
+    const targetLabel = entry.targetRole === 'ADMIN' ? 'Administrator' : entry.targetRole === 'TEACHER' ? 'Teacher' : entry.targetRole || 'account';
+    switch (entry.action) {
+      case 'CREATE_STAFF':
+        return `created a ${targetLabel} account (${entry.targetEmail})`;
+      case 'DELETE_STAFF':
+        return `deleted a ${targetLabel} account (${entry.targetEmail})`;
+      case 'RESET_PASSWORD':
+        return `reset the password for ${entry.targetEmail}`;
+      default:
+        return `${entry.action} — ${entry.targetEmail || ''}`;
     }
   };
 
@@ -86,6 +133,7 @@ export const StaffAccountsPage = () => {
       addToast(`${addForm.role === 'ADMIN' ? 'Administrator' : 'Teacher'} account created for ${addForm.name.trim()}.`, 'success');
       setAddModalOpen(false);
       loadStaff();
+      loadAuditLog();
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to create staff account', 'error');
     } finally {
@@ -114,6 +162,9 @@ export const StaffAccountsPage = () => {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span className="badge badge-secondary">{staff.length} Accounts</span>
+          <button type="button" className="btn btn-secondary" onClick={() => setShowActivityLog((v) => !v)}>
+            <History size={16} /> {showActivityLog ? 'Hide' : 'Show'} Activity Log
+          </button>
           <button type="button" className="btn btn-primary" onClick={handleOpenAdd}>
             <UserPlus size={16} /> Add Staff
           </button>
@@ -175,13 +226,23 @@ export const StaffAccountsPage = () => {
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => { setResetModalUser(s); setResetPasswordValue(''); }}
-                    >
-                      <KeyRound size={13} /> Reset Password
-                    </button>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => { setResetModalUser(s); setResetPasswordValue(''); }}
+                      >
+                        <KeyRound size={13} /> Reset Password
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ color: '#ef4444' }}
+                        onClick={() => setDeleteModalUser(s)}
+                      >
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -189,6 +250,28 @@ export const StaffAccountsPage = () => {
           </tbody>
         </table>
       </div>
+
+      {showActivityLog && (
+        <div className="card" style={{ marginTop: '1.25rem', padding: '1rem 1.25rem' }}>
+          <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <History size={16} /> Recent Activity
+          </h3>
+          {auditLog.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>No account-management actions recorded yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
+              {auditLog.map((entry) => (
+                <div key={entry.id} style={{ fontSize: '0.825rem', color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+                  <strong>{entry.actorEmail}</strong> {describeAuditEntry(entry)}
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.15rem' }}>
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <Modal
         isOpen={!!resetModalUser}
@@ -309,6 +392,44 @@ export const StaffAccountsPage = () => {
             </>
           )}
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!deleteModalUser}
+        onClose={() => setDeleteModalUser(null)}
+        title="Delete Staff Account"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem', borderRadius: '50%', color: '#ef4444' }}>
+              <AlertCircle size={24} />
+            </div>
+            <div>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+                Are you sure you want to delete this {deleteModalUser?.role === 'ADMIN' ? 'administrator' : 'teacher'} account?
+              </p>
+              <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                <strong>{deleteModalUser?.name}</strong> ({deleteModalUser?.email}) will lose access immediately. This cannot be undone.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+            <button type="button" className="btn btn-secondary" disabled={deleting} onClick={() => setDeleteModalUser(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn"
+              style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              disabled={deleting}
+              onClick={handleConfirmDelete}
+            >
+              <Trash2 size={15} />
+              {deleting ? 'Deleting...' : 'Delete Account'}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

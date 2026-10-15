@@ -42,6 +42,16 @@ export const authService = {
     return response.data;
   },
 
+  deleteStaff: async (userId) => {
+    const response = await api.delete(`/api/auth/staff/${userId}`);
+    return response.data;
+  },
+
+  getAuditLog: async () => {
+    const response = await api.get('/api/auth/audit-log');
+    return response.data;
+  },
+
   resetUserPassword: async (userId, newPassword) => {
     const response = await api.put(`/api/auth/users/${userId}/password`, { newPassword });
     return response.data;
