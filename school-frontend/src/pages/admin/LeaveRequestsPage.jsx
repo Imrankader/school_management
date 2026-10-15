@@ -4,7 +4,7 @@ import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { toDisplayClassName } from '../../utils/academicClassOrder';
-import { CalendarCheck2, FileText, Search, RefreshCw, User, Plus, X } from 'lucide-react';
+import { CalendarCheck2, FileText, Search, RefreshCw, User, Plus, X, Users, GraduationCap } from 'lucide-react';
 
 const SESSION_OPTIONS = [
   '5 AM - 7 AM',
@@ -22,7 +22,9 @@ const SESSION_OPTIONS = [
  * notifies that student's parent portal.
  */
 export const LeaveRequestsPage = () => {
+  const [activeTab, setActiveTab] = useState('student'); // 'student' | 'staff'
   const [leaveRequests, setLeaveRequests] = useState([]);
+  const [teacherLeaves, setTeacherLeaves] = useState([]);
   const [studentsMap, setStudentsMap] = useState({});
   const [allStudents, setAllStudents] = useState([]);
   const [leaveReasons, setLeaveReasons] = useState([]);
@@ -46,9 +48,10 @@ export const LeaveRequestsPage = () => {
   const loadLeaveRequests = async () => {
     try {
       setLoading(true);
-      const [res, stuRes] = await Promise.allSettled([
+      const [res, stuRes, teacherRes] = await Promise.allSettled([
         leaveService.getAll(),
         studentService.getAllStudents({ page: 1, pageSize: 10000 }),
+        leaveService.getAllTeacherLeave(),
       ]);
 
       if (res.status === 'fulfilled' && res.value?.success && res.value.data) {
@@ -66,6 +69,12 @@ export const LeaveRequestsPage = () => {
         });
         setStudentsMap(map);
         setAllStudents(list);
+      }
+
+      if (teacherRes.status === 'fulfilled' && teacherRes.value?.success && teacherRes.value.data) {
+        setTeacherLeaves(teacherRes.value.data);
+      } else {
+        setTeacherLeaves([]);
       }
     } catch (err) {
       addToast('Failed to load leave records', 'error');
@@ -86,6 +95,18 @@ export const LeaveRequestsPage = () => {
       (stu?.className || '').toLowerCase().includes(term)
     );
     const matchesDate = !filterDate || (r.leaveDate || r.startDate) === filterDate;
+    return matchesSearch && matchesDate;
+  });
+
+  const filteredStaffLeaves = teacherLeaves.filter((r) => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = (
+      (r.teacherName || '').toLowerCase().includes(term) ||
+      (r.reason || '').toLowerCase().includes(term) ||
+      (r.assignedClass || '').toLowerCase().includes(term) ||
+      (r.assignedSection || '').toLowerCase().includes(term)
+    );
+    const matchesDate = !filterDate || r.startDate === filterDate || r.endDate === filterDate;
     return matchesSearch && matchesDate;
   });
 
@@ -178,12 +199,12 @@ export const LeaveRequestsPage = () => {
         <div>
           <h1 className="page-title">Leave Records</h1>
           <p className="page-subtitle">
-            Student absence records — submitted by parents, or recorded directly by admin.
+            Student absences, and staff leave submitted by teachers themselves — in separate sections below.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span className="badge badge-secondary" style={{ fontSize: '0.8125rem', padding: '0.3rem 0.75rem' }}>
-            {leaveRequests.length} Total Records
+            {activeTab === 'student' ? `${leaveRequests.length} Student Records` : `${teacherLeaves.length} Staff Records`}
           </span>
           <button
             className="btn btn-secondary btn-sm"
@@ -194,11 +215,39 @@ export const LeaveRequestsPage = () => {
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
           </button>
-          <button className="btn btn-primary btn-sm" onClick={openMarkModal}>
-            <Plus size={14} />
-            <span>Mark Student on Leave</span>
-          </button>
+          {activeTab === 'student' && (
+            <button className="btn btn-primary btn-sm" onClick={openMarkModal}>
+              <Plus size={14} />
+              <span>Mark Student on Leave</span>
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Section Tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
+        <button
+          type="button"
+          onClick={() => setActiveTab('student')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', fontSize: '0.875rem', fontWeight: 600,
+            border: 'none', borderBottom: activeTab === 'student' ? '2px solid var(--primary)' : '2px solid transparent',
+            background: 'transparent', color: activeTab === 'student' ? 'var(--primary)' : 'var(--text-secondary)', cursor: 'pointer',
+          }}
+        >
+          <GraduationCap size={15} /> Student Leave
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('staff')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', fontSize: '0.875rem', fontWeight: 600,
+            border: 'none', borderBottom: activeTab === 'staff' ? '2px solid var(--primary)' : '2px solid transparent',
+            background: 'transparent', color: activeTab === 'staff' ? 'var(--primary)' : 'var(--text-secondary)', cursor: 'pointer',
+          }}
+        >
+          <Users size={15} /> Staff Leave
+        </button>
       </div>
 
       {/* Search Toolbar */}
@@ -207,7 +256,7 @@ export const LeaveRequestsPage = () => {
         <input
           type="text"
           className="form-input"
-          placeholder="Search by student name, admission no, class, or reason..."
+          placeholder={activeTab === 'student' ? 'Search by student name, admission no, class, or reason...' : 'Search by teacher name, class, section, or reason...'}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{ flex: 1, border: 'none', padding: '0.25rem 0', boxShadow: 'none' }}
@@ -242,7 +291,8 @@ export const LeaveRequestsPage = () => {
         )}
       </div>
 
-      {/* Leave Table */}
+      {/* Student Leave Table */}
+      {activeTab === 'student' && (
       <div className="table-container">
         <table className="table" style={{ width: '100%', minWidth: '860px' }}>
           <thead>
@@ -316,6 +366,70 @@ export const LeaveRequestsPage = () => {
           </tbody>
         </table>
       </div>
+      )}
+
+      {/* Staff Leave Table */}
+      {activeTab === 'staff' && (
+      <div className="table-container">
+        <table className="table" style={{ width: '100%', minWidth: '780px' }}>
+          <thead>
+            <tr>
+              <th style={{ width: '60px' }}>S.No</th>
+              <th>Teacher Name</th>
+              <th>Assigned Class & Sec</th>
+              <th>Leave Date(s)</th>
+              <th>Reason</th>
+              <th>Submitted On</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStaffLeaves.length === 0 ? (
+              <tr>
+                <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                  <Users size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
+                  <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    {loading ? 'Loading leave records...' : (searchTerm || filterDate) ? 'No records match your search.' : 'No staff leave submitted yet.'}
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              filteredStaffLeaves.map((req, idx) => {
+                const classDisplay = req.assignedClass
+                  ? `${toDisplayClassName(req.assignedClass)}${req.assignedSection ? ` (${req.assignedSection})` : ''}`
+                  : '—';
+                const dateRange = req.startDate === req.endDate || !req.endDate
+                  ? (req.startDate || '—')
+                  : `${req.startDate} – ${req.endDate}`;
+                const submittedOn = req.createdAt ? formatDate(req.createdAt) : '—';
+
+                return (
+                  <tr key={req.id}>
+                    <td><strong>{idx + 1}</strong></td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {req.teacherName || `Teacher #${req.teacherId}`}
+                    </td>
+                    <td>
+                      <span className="badge badge-primary">
+                        {classDisplay}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>
+                      {dateRange}
+                    </td>
+                    <td style={{ maxWidth: '300px', fontSize: '0.875rem' }}>
+                      {req.reason || '—'}
+                    </td>
+                    <td style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                      {submittedOn}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+      )}
 
       {/* Mark Student on Leave Modal */}
       {showMarkModal && (
