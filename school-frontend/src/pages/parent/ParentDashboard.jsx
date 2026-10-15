@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { studentService } from '../../services/studentService';
@@ -6,6 +6,7 @@ import { feeService } from '../../services/feeService';
 import { academicService } from '../../services/academicService';
 import { leaveService } from '../../services/leaveService';
 import { notificationService } from '../../services/notificationService';
+import { homeworkService } from '../../services/homeworkService';
 import {
   User,
   DollarSign,
@@ -24,11 +25,25 @@ import {
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: User },
+  { id: 'homework', label: 'Homework', icon: BookOpen },
   { id: 'fees', label: 'Fees', icon: DollarSign },
   { id: 'marks', label: 'Marks', icon: Award },
   { id: 'leave', label: 'Leave', icon: FileText },
   { id: 'notifications', label: 'Notifications', icon: Bell },
 ];
+
+// A due date is the one thing a parent scans for first — show how urgent it is, not just what it is.
+const getUrgency = (dueDate) => {
+  if (!dueDate) return { label: 'No due date', tone: 'secondary' };
+  const today = new Date(new Date().toDateString());
+  const due = new Date(dueDate);
+  const days = Math.round((due - today) / 86400000);
+  if (days < 0) return { label: `Overdue by ${Math.abs(days)}d`, tone: 'danger' };
+  if (days === 0) return { label: 'Due today', tone: 'warning' };
+  if (days === 1) return { label: 'Due tomorrow', tone: 'warning' };
+  if (days <= 7) return { label: `Due in ${days}d`, tone: 'primary' };
+  return { label: `Due in ${days}d`, tone: 'secondary' };
+};
 
 export const ParentDashboard = () => {
   const { user } = useAuth();
@@ -41,6 +56,7 @@ export const ParentDashboard = () => {
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [leaveReasons, setLeaveReasons] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [homework, setHomework] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Leave form state
@@ -61,26 +77,36 @@ export const ParentDashboard = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
+      let studentRecord = null;
       try {
         const stuRes = await studentService.getStudentById(studentId);
         if (stuRes.success && stuRes.data) {
+          studentRecord = stuRes.data;
           setChild(stuRes.data);
         }
       } catch (e) {
         console.error('Student load failed', e);
       }
 
-      const [feeRes, mrkRes, lvRes, notifRes] = await Promise.allSettled([
+      const [feeRes, mrkRes, lvRes, notifRes, hwRes] = await Promise.allSettled([
         feeService.getFeesByStudent(studentId),
         academicService.getMarksByStudent(studentId),
         leaveService.getMyLeave(),
         notificationService.getMyNotifications(),
+        studentRecord?.className ? homeworkService.getByClass(studentRecord.className) : Promise.resolve(null),
       ]);
 
       if (feeRes.status === 'fulfilled' && feeRes.value?.data) setFees(feeRes.value.data);
       if (mrkRes.status === 'fulfilled' && mrkRes.value?.data) setMarks(mrkRes.value.data);
       if (lvRes.status === 'fulfilled' && lvRes.value?.data) setLeaveRequests(lvRes.value.data || []);
       if (notifRes.status === 'fulfilled' && notifRes.value?.data) setNotifications(notifRes.value.data || []);
+      if (hwRes.status === 'fulfilled' && hwRes.value?.data) {
+        // Section-specific homework only reaches that section; class-wide homework (no section set) reaches everyone.
+        const mySection = (studentRecord?.section || '').trim().toLowerCase();
+        const relevant = hwRes.value.data.filter((h) => !h.section || h.section.trim().toLowerCase() === mySection);
+        relevant.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+        setHomework(relevant);
+      }
 
       // Load active predefined leave reasons
       try {
@@ -153,6 +179,11 @@ export const ParentDashboard = () => {
   const avgScore = gradedMarks.length > 0
     ? (gradedMarks.reduce((acc, m) => acc + (Number(m.marksObtained) / (Number(m.maxMarks) || 100)) * 100, 0) / gradedMarks.length).toFixed(1)
     : '—';
+
+  const overdueHomeworkCount = useMemo(
+    () => homework.filter((h) => h.dueDate && new Date(h.dueDate) < new Date(new Date().toDateString())).length,
+    [homework]
+  );
 
   const getChildName = (c) => c?.name || `${c?.firstName || ''} ${c?.lastName || ''}`.trim() || 'Student';
   const getAdmissionNo = (c) => c?.admissionNumber || c?.rollNumber || 'N/A';
@@ -348,6 +379,42 @@ export const ParentDashboard = () => {
             </div>
           </div>
 
+          {/* Upcoming Homework */}
+          <div className="card">
+            <div className="card-header">
+              <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.95rem' }}>
+                <BookOpen size={16} color="var(--primary)" />
+                Upcoming Homework
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveTab('homework')}
+                style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}
+              >
+                View All
+              </button>
+            </div>
+            <div className="card-body">
+              {homework.length === 0 ? (
+                <div style={{ padding: '1rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                  No homework assigned right now.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {homework.slice(0, 3).map((h) => {
+                    const urgency = getUrgency(h.dueDate);
+                    return (
+                      <div key={h.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', padding: '0.55rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-main)' }}>{h.title}</span>
+                        <span className={`badge badge-${urgency.tone}`} style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{urgency.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Recent Marks & Recent Notifications Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
             {/* Recent Marks Table */}
@@ -437,6 +504,66 @@ export const ParentDashboard = () => {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: HOMEWORK */}
+      {/* ========================================================================= */}
+      {activeTab === 'homework' && (
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">Homework</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                Assignments for {child.className}{child.section ? ` (${child.section})` : ''}, soonest due date first
+              </p>
+            </div>
+            {overdueHomeworkCount > 0 && (
+              <span className="badge badge-danger">{overdueHomeworkCount} overdue</span>
+            )}
+          </div>
+          <div className="card-body">
+            {homework.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                <BookOpen size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
+                No homework assigned yet — check back after class.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {homework.map((h) => {
+                  const urgency = getUrgency(h.dueDate);
+                  return (
+                    <div
+                      key={h.id}
+                      style={{
+                        padding: '1rem',
+                        background: 'var(--bg-main)',
+                        border: '1px solid var(--border-subtle)',
+                        borderLeft: `3px solid var(--${urgency.tone === 'secondary' ? 'text-muted' : urgency.tone})`,
+                        borderRadius: 'var(--radius-sm)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)' }}>{h.title}</span>
+                        <span className={`badge badge-${urgency.tone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          <Calendar size={11} /> {urgency.label}
+                        </span>
+                      </div>
+                      {h.description && (
+                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                          {h.description}
+                        </div>
+                      )}
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                        Due {formatDate(h.dueDate)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
