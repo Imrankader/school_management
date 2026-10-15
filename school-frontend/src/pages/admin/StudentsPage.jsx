@@ -3,6 +3,7 @@ import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { BulkUploadModal } from '../../components/students/BulkUploadModal';
+import { usePersistedState } from '../../hooks/usePersistedState';
 import {
   getClassAcademicRank,
   compareAcademicClasses,
@@ -54,15 +55,18 @@ export const StudentsPage = () => {
   const [totalStudents, setTotalStudents] = useState(0);
   const [activeStudentsCount, setActiveStudentsCount] = useState(0);
 
-  // Modals
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Modals — the Add/Edit Student form survives an accidental page refresh:
+  // its open flag, which student (if any) is being edited, and every typed
+  // field all live in sessionStorage via usePersistedState, so a refresh
+  // mid-entry reopens the same form with everything still filled in.
+  const [isModalOpen, setIsModalOpen] = usePersistedState('draft:student-modal-open', false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkModalTargetClass, setBulkModalTargetClass] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, student: null, loading: false });
-  const [editingStudent, setEditingStudent] = useState(null);
+  const [editingStudent, setEditingStudent] = usePersistedState('draft:student-editing', null);
   const [showModalPassword, setShowModalPassword] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = usePersistedState('draft:student-form', {
     admNo: '',
     name: '',
     className: '',
@@ -87,6 +91,15 @@ export const StudentsPage = () => {
   const [sectionFilter, setSectionFilter] = useState('ALL');
 
   const { addToast } = useToast();
+
+  // Runs once per page load: if the form modal was still open when the page
+  // last refreshed, let the admin know their typed details are still there.
+  useEffect(() => {
+    if (isModalOpen) {
+      addToast('Restored the student details you were entering.', 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleExportCSV = (studentList, filenamePrefix = 'Students') => {
     if (!studentList || studentList.length === 0) {
@@ -1646,6 +1659,7 @@ export const StudentsPage = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingStudent ? 'Edit Student Profile' : (selectedClass ? `Add Individual Student — ${selectedClass}` : 'Add Student')}
+        icon={editingStudent ? Edit2 : Users}
         footer={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>

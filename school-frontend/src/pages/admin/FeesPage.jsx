@@ -6,6 +6,7 @@ import { Modal } from '../../components/common/Modal';
 import { BulkBillingUploadModal } from '../../components/billing/BulkBillingUploadModal';
 import { IndividualBillingModal } from '../../components/billing/IndividualBillingModal';
 import BillingTableSkeleton from '../../components/billing/BillingTableSkeleton';
+import { usePersistedState } from '../../hooks/usePersistedState';
 import {
   DollarSign,
   Plus,
@@ -76,8 +77,10 @@ export const FeesPage = () => {
   // Modals
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [bulkModalClass, setBulkModalClass] = useState('ALL');
-  const [isIndividualModalOpen, setIsIndividualModalOpen] = useState(false);
-  const [individualModalStudent, setIndividualModalStudent] = useState(null);
+  // Survives an accidental page refresh together with the fee figures
+  // persisted inside IndividualBillingModal itself.
+  const [isIndividualModalOpen, setIsIndividualModalOpen] = usePersistedState('draft:bill-modal-open', false);
+  const [individualModalStudent, setIndividualModalStudent] = usePersistedState('draft:bill-modal-student', null);
 
   // Record Payment Modal
   const [paymentModal, setPaymentModal] = useState(false);

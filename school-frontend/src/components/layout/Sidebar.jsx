@@ -1,8 +1,8 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { Logo } from '../common/Logo';
 import {
-  GraduationCap,
   LayoutDashboard,
   Users,
   DollarSign,
@@ -27,9 +27,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       {/* Brand Header */}
       <div className="sidebar-header">
-        <div className="sidebar-brand-icon">
-          <GraduationCap size={20} />
-        </div>
+        <Logo size={34} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="sidebar-brand-text">EduCore</div>
           <div className="sidebar-brand-sub">School Management System</div>

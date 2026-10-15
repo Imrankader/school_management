@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { feeService } from '../../services/feeService';
 import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
+import { usePersistedState } from '../../hooks/usePersistedState';
 import { DollarSign, UserCheck, Calculator, X, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { toDisplayClassName } from '../../utils/academicClassOrder';
 
@@ -17,18 +18,23 @@ export const IndividualBillingModal = ({
   const isEditMode = Boolean(initialStudent);
 
   const [studentList, setStudentList] = useState(activeStudents);
-  const [selectedStudentId, setSelectedStudentId] = useState('');
-  const [feeId, setFeeId] = useState(null);
-  const [termFees1, setTermFees1] = useState('');
-  const [termFees2, setTermFees2] = useState('');
-  const [termFees3, setTermFees3] = useState('');
-  const [busFees, setBusFees] = useState('');
-  const [examFees, setExamFees] = useState('');
-  const [paidAmount, setPaidAmount] = useState('');
-  const [description, setDescription] = useState('Tuition & Fees');
-  const [academicYear, setAcademicYear] = useState('2026-2027');
+  // Every typed figure here survives an accidental page refresh (sessionStorage).
+  // On first mount, if the modal was still open with numbers in it, `skipInitialLoadRef`
+  // stops the usual "load this student's current billing" effect from immediately
+  // overwriting them with whatever is already saved on the server.
+  const [selectedStudentId, setSelectedStudentId] = usePersistedState('draft:bill-selectedStudentId', '');
+  const [feeId, setFeeId] = usePersistedState('draft:bill-feeId', null);
+  const [termFees1, setTermFees1] = usePersistedState('draft:bill-termFees1', '');
+  const [termFees2, setTermFees2] = usePersistedState('draft:bill-termFees2', '');
+  const [termFees3, setTermFees3] = usePersistedState('draft:bill-termFees3', '');
+  const [busFees, setBusFees] = usePersistedState('draft:bill-busFees', '');
+  const [examFees, setExamFees] = usePersistedState('draft:bill-examFees', '');
+  const [paidAmount, setPaidAmount] = usePersistedState('draft:bill-paidAmount', '');
+  const [description, setDescription] = usePersistedState('draft:bill-description', 'Tuition & Fees');
+  const [academicYear, setAcademicYear] = usePersistedState('draft:bill-academicYear', '2026-2027');
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const skipInitialLoadRef = useRef(isOpen);
 
   const { addToast } = useToast();
 
@@ -100,9 +106,35 @@ export const IndividualBillingModal = ({
     }
   };
 
+  // Runs once, for real, no matter how many times the effect below re-fires.
+  useEffect(() => {
+    if (skipInitialLoadRef.current) {
+      addToast('Restored the billing details you were entering.', 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Clears the mount-time restore flag only once the modal actually closes —
+  // not after its first render — so the restored draft survives activeStudents
+  // arriving async right after mount (which re-runs the effect below once more
+  // while the modal is still open) without being wiped by the reset-and-reload
+  // path meant for genuinely opening the form fresh.
+  useEffect(() => {
+    if (!isOpen) {
+      skipInitialLoadRef.current = false;
+    }
+  }, [isOpen]);
+
   // Load fresh active students or prepopulate on modal open
   useEffect(() => {
     if (!isOpen) return;
+
+    if (skipInitialLoadRef.current) {
+      if (isEditMode && initialStudent) {
+        setSelectedStudentId(String(initialStudent.studentId || initialStudent.id));
+      }
+      return;
+    }
 
     if (isEditMode && initialStudent) {
       const sid = String(initialStudent.studentId || initialStudent.id);
@@ -256,7 +288,7 @@ export const IndividualBillingModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop">
       <div
         className="modal-content"
         style={{
@@ -266,10 +298,7 @@ export const IndividualBillingModal = ({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          borderRadius: 'var(--radius-lg, 12px)',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div

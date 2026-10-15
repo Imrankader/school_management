@@ -284,6 +284,7 @@ export const HomeworkPage = () => {
         isOpen={createModal}
         onClose={() => setCreateModal(false)}
         title="Assign New Homework"
+        icon={BookOpen}
         footer={
           <>
             <button className="btn btn-secondary" onClick={() => setCreateModal(false)}>Cancel</button>
@@ -365,6 +366,7 @@ export const HomeworkPage = () => {
         isOpen={editModal}
         onClose={() => setEditModal(false)}
         title="Edit Homework"
+        icon={Edit2}
         footer={
           <>
             <button className="btn btn-secondary" onClick={() => setEditModal(false)}>Cancel</button>

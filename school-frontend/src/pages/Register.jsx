@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { GraduationCap, UserPlus, Mail, KeyRound, User, ShieldCheck } from 'lucide-react';
+import { UserPlus, Mail, KeyRound, User, ShieldCheck } from 'lucide-react';
+import { Logo } from '../components/common/Logo';
 
 export const Register = () => {
   const [formData, setFormData] = useState({
@@ -67,20 +68,8 @@ export const Register = () => {
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 0.75rem',
-              color: '#fff',
-            }}
-          >
-            <GraduationCap size={24} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.75rem' }}>
+            <Logo size={44} />
           </div>
           <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
             Create Staff Account

@@ -1,13 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { GraduationCap, LogIn, KeyRound, User, Phone, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Logo } from '../components/common/Logo';
+import { LogIn, KeyRound, IdCard, Eye, EyeOff } from 'lucide-react';
+
+const DEMO_SHORTCUTS = {
+  admin: { email: 'admin@school.com', password: 'Admin@123' },
+  teacher: { email: 'teacher@school.com', password: 'Teacher@123' },
+};
+
+// A phone number is all digits (and common separators), 10+ digits long.
+// Anything else — "admin@school.com", "admin", a parent's actual email —
+// goes through staff login. This is what makes one field work for both portals.
+const looksLikePhone = (value) => {
+  const digitsOnly = value.replace(/[\s()+-]/g, '');
+  return /^\d{10,}$/.test(digitsOnly);
+};
 
 export const Login = () => {
-  const [mode, setMode] = useState('staff'); // 'staff' or 'parent'
-  const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -16,73 +28,55 @@ export const Login = () => {
   const { addToast } = useToast();
   const navigate = useNavigate();
 
+  const isPhone = useMemo(() => looksLikePhone(identifier.trim()), [identifier]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const cleanIdentifier = identifier.trim();
+    const cleanPassword = password.trim();
 
-    let cleanEmail = email.trim();
-    let cleanPhone = phoneNumber.trim();
-    let cleanPassword = password.trim();
-
-    // Auto-expand shortcut usernames and common demo variations
-    if (mode === 'staff') {
-      if (cleanEmail.toLowerCase() === 'admin') cleanEmail = 'admin@school.com';
-      if (cleanEmail.toLowerCase() === 'teacher') cleanEmail = 'teacher@school.com';
-      if (cleanEmail.toLowerCase() === 'parent') cleanEmail = 'parent@school.com';
-
-      // Auto-correct common case variations for demo accounts (dev builds only)
-      if (import.meta.env.DEV && cleanEmail.toLowerCase() === 'admin@school.com' && (cleanPassword.toLowerCase() === 'admin123' || cleanPassword.toLowerCase() === 'admin')) {
-        cleanPassword = 'Admin@123';
-      }
-      if (import.meta.env.DEV && cleanEmail.toLowerCase() === 'teacher@school.com' && (cleanPassword.toLowerCase() === 'teacher123' || cleanPassword.toLowerCase() === 'teacher')) {
-        cleanPassword = 'Teacher@123';
-      }
-      if (import.meta.env.DEV && cleanEmail.toLowerCase() === 'parent@school.com' && (cleanPassword.toLowerCase() === 'parent123' || cleanPassword.toLowerCase() === 'parent')) {
-        cleanPassword = 'Parent@123';
-      }
-
-      if (!cleanEmail || !cleanPassword) {
-        addToast('Please enter both email and password', 'warning');
-        return;
-      }
-    } else {
-      if (!cleanPhone || !cleanPassword) {
-        addToast('Please enter both phone number and password', 'warning');
-        return;
-      }
+    if (!cleanIdentifier || !cleanPassword) {
+      addToast('Enter your email or phone number, and your password', 'warning');
+      return;
     }
 
     try {
       setSubmitting(true);
       let user;
-      if (mode === 'parent') {
-        user = await parentLogin({ phoneNumber: cleanPhone, password: cleanPassword });
+      if (looksLikePhone(cleanIdentifier)) {
+        user = await parentLogin({ phoneNumber: cleanIdentifier, password: cleanPassword });
       } else {
-        user = await login({ email: cleanEmail, password: cleanPassword });
+        let email = cleanIdentifier;
+        let demoPassword = cleanPassword;
+        const shortcut = DEMO_SHORTCUTS[email.toLowerCase()];
+        if (import.meta.env.DEV && shortcut) {
+          email = shortcut.email;
+          if (demoPassword.toLowerCase() === email.split('@')[0].toLowerCase() || demoPassword.toLowerCase() === 'password') {
+            demoPassword = shortcut.password;
+          }
+        }
+        user = await login({ email, password: demoPassword });
       }
 
       addToast(`Welcome back, ${user.name || user.email}!`, 'success');
-
-      // Navigate based on role
       if (user.role === 'ADMIN') navigate('/admin');
       else if (user.role === 'TEACHER') navigate('/teacher');
       else if (user.role === 'PARENT') navigate('/parent');
       else navigate('/');
     } catch (err) {
-      addToast(err.response?.data?.message || err.message || 'Login failed. Please check your credentials.', 'error');
+      addToast(err.response?.data?.message || err.message || 'Login failed. Check your details and try again.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleQuickFill = (role, val1, val2) => {
-    if (role === 'parent-phone') {
-      setMode('parent');
-      setPhoneNumber(val1);
-      setPassword(val2);
+  const handleQuickFill = (kind) => {
+    if (kind === 'parent') {
+      setIdentifier('9876543210');
+      setPassword('Parent@123');
     } else {
-      setMode('staff');
-      setEmail(val1);
-      setPassword(val2);
+      setIdentifier(DEMO_SHORTCUTS[kind].email);
+      setPassword(DEMO_SHORTCUTS[kind].password);
     }
   };
 
@@ -93,7 +87,7 @@ export const Login = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#0f172a',
+        background: 'radial-gradient(circle at 20% -10%, #312e81 0%, #0f172a 45%, #020617 100%)',
         padding: '1.5rem',
       }}
     >
@@ -103,139 +97,50 @@ export const Login = () => {
           maxWidth: '440px',
           background: '#ffffff',
           borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-xl)',
+          boxShadow: '0 30px 60px -15px rgba(2, 6, 23, 0.5)',
           padding: '2.25rem',
-          border: '1px solid var(--border-subtle)',
+          border: '1px solid rgba(255,255,255,0.08)',
         }}
       >
         {/* Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--primary)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 0.75rem',
-              color: '#fff',
-            }}
-          >
-            <GraduationCap size={24} />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '0.9rem' }}>
+            <Logo size={56} />
           </div>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
             EduCore
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginTop: '0.2rem' }}>
-            School Management SaaS Platform
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
+            One sign-in for admins, teachers and parents
           </p>
         </div>
 
-        {/* Portal Switcher Tabs */}
-        <div
-          style={{
-            display: 'flex',
-            background: 'var(--bg-subtle)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '3px',
-            marginBottom: '1.5rem',
-            border: '1px solid var(--border-subtle)',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setMode('parent')}
-            style={{
-              flex: 1,
-              padding: '0.5rem 0.75rem',
-              borderRadius: 'var(--radius-xs)',
-              border: 'none',
-              background: mode === 'parent' ? '#ffffff' : 'transparent',
-              color: mode === 'parent' ? 'var(--primary)' : 'var(--text-muted)',
-              fontWeight: mode === 'parent' ? 600 : 500,
-              fontSize: '0.8125rem',
-              cursor: 'pointer',
-              boxShadow: mode === 'parent' ? 'var(--shadow-xs)' : 'none',
-              transition: 'var(--transition)',
-            }}
-          >
-            Parent Portal
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('staff')}
-            style={{
-              flex: 1,
-              padding: '0.5rem 0.75rem',
-              borderRadius: 'var(--radius-xs)',
-              border: 'none',
-              background: mode === 'staff' ? '#ffffff' : 'transparent',
-              color: mode === 'staff' ? 'var(--primary)' : 'var(--text-muted)',
-              fontWeight: mode === 'staff' ? 600 : 500,
-              fontSize: '0.8125rem',
-              cursor: 'pointer',
-              boxShadow: mode === 'staff' ? 'var(--shadow-xs)' : 'none',
-              transition: 'var(--transition)',
-            }}
-          >
-            Staff Portal
-          </button>
-        </div>
-
         <form onSubmit={handleSubmit}>
-          {mode === 'parent' ? (
-            <div className="form-group">
-              <label className="form-label">Parent Mobile Number</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Enter registered mobile number"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  style={{ paddingLeft: '2.4rem' }}
-                  required
-                />
-                <Phone
-                  size={15}
-                  style={{
-                    position: 'absolute',
-                    left: '0.85rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: 'var(--text-light)',
-                  }}
-                />
-              </div>
+          <div className="form-group">
+            <label className="form-label">Email or Mobile Number</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="you@school.com or your mobile number"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                style={{ paddingLeft: '2.4rem' }}
+                autoComplete="username"
+                required
+                autoFocus
+              />
+              <IdCard
+                size={15}
+                style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
+              />
             </div>
-          ) : (
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="email"
-                  className="form-input"
-                  placeholder="admin@school.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  style={{ paddingLeft: '2.4rem' }}
-                  required
-                />
-                <User
-                  size={15}
-                  style={{
-                    position: 'absolute',
-                    left: '0.85rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: 'var(--text-light)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
+            {identifier.trim() && (
+              <p style={{ fontSize: '0.7rem', color: 'var(--primary)', marginTop: '0.35rem', fontWeight: 600 }}>
+                {isPhone ? 'Signing in to the parent portal' : 'Signing in to the staff portal'}
+              </p>
+            )}
+          </div>
 
           <div className="form-group" style={{ marginBottom: '1.25rem' }}>
             <label className="form-label">Password</label>
@@ -247,32 +152,21 @@ export const Login = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ paddingLeft: '2.4rem', paddingRight: '2.4rem' }}
+                autoComplete="current-password"
                 required
               />
               <KeyRound
                 size={15}
-                style={{
-                  position: 'absolute',
-                  left: '0.85rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--text-light)',
-                }}
+                style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
                 style={{
-                  position: 'absolute',
-                  right: '0.85rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
+                  position: 'absolute', right: '0.85rem', top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+                  display: 'flex', alignItems: 'center',
                 }}
               >
                 {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -283,50 +177,35 @@ export const Login = () => {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: '100%', padding: '0.65rem', fontWeight: 600, marginBottom: '1.25rem' }}
+            style={{ width: '100%', padding: '0.7rem', fontWeight: 600, marginBottom: '1.25rem' }}
             disabled={submitting}
           >
             <LogIn size={15} />
-            <span>{submitting ? 'Authenticating...' : mode === 'parent' ? 'Sign In as Parent' : 'Sign In as Staff'}</span>
+            <span>{submitting ? 'Signing in...' : 'Sign In'}</span>
           </button>
         </form>
 
         {/* Demo Quick-Fill Credentials (dev builds only, never shown in production) */}
         {import.meta.env.DEV && (
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Quick Demo Login
+          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+            <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', textAlign: 'center', marginBottom: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Quick Demo Login
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }} onClick={() => handleQuickFill('admin')}>
+                Admin
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }} onClick={() => handleQuickFill('teacher')}>
+                Teacher
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }} onClick={() => handleQuickFill('parent')}>
+                Parent
+              </button>
+            </div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
+              Demo Passwords: <code>Admin@123</code> &bull; <code>Teacher@123</code> &bull; <code>Parent@123</code>
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }}
-              onClick={() => handleQuickFill('staff', 'admin@school.com', 'Admin@123')}
-            >
-              Admin
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }}
-              onClick={() => handleQuickFill('staff', 'teacher@school.com', 'Teacher@123')}
-            >
-              Teacher
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              style={{ fontSize: '0.75rem', padding: '0.35rem 0.4rem' }}
-              onClick={() => handleQuickFill('parent', 'parent@school.com', 'Parent@123')}
-            >
-              Parent
-            </button>
-          </div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.5rem' }}>
-            Demo Passwords: <code>Admin@123</code> &bull; <code>Teacher@123</code> &bull; <code>Parent@123</code>
-          </div>
-        </div>
         )}
 
         {/* Footer Link */}
