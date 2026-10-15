@@ -46,6 +46,8 @@ public class UserService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(request.getRole())
                 .studentId(request.getRole() == Role.PARENT ? request.getStudentId() : null)
+                .assignedClass(request.getRole() == Role.TEACHER ? request.getAssignedClass() : null)
+                .assignedSection(request.getRole() == Role.TEACHER ? request.getAssignedSection() : null)
                 .build();
 
         User savedUser = userRepository.save(user);

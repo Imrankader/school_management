@@ -64,11 +64,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (userData) => {
-    const res = await authService.register(userData);
-    return res;
-  };
-
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -85,7 +80,6 @@ export const AuthProvider = ({ children }) => {
     isParent: user?.role === 'PARENT',
     login,
     parentLogin,
-    register,
     logout,
   };
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Logo } from '../components/common/Logo';
@@ -207,14 +207,6 @@ export const Login = () => {
             </div>
           </div>
         )}
-
-        {/* Footer Link */}
-        <div style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-          Need new credentials?{' '}
-          <Link to="/register" style={{ color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
-            Register staff
-          </Link>
-        </div>
       </div>
     </div>
   );

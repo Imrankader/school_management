@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -29,7 +29,6 @@ const lazyPage = (loader, name) => lazy(() => loader()
     throw error;
   }));
 
-const Register = lazyPage(() => import('./pages/Register'), 'Register');
 const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'), 'AdminDashboard');
 const StudentsPage = lazyPage(() => import('./pages/admin/StudentsPage'), 'StudentsPage');
 const ParentsPage = lazyPage(() => import('./pages/admin/ParentsPage'), 'ParentsPage');
@@ -79,7 +78,6 @@ export const App = () => {
             <Routes>
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Suspense fallback={null}><Register /></Suspense>} />
               <Route path="/" element={<HomeRedirect />} />
 
               {/* Admin Protected Routes */}

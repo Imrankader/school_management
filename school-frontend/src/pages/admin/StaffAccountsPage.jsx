@@ -3,8 +3,10 @@ import { authService } from '../../services/authService';
 import { useToast } from '../../context/ToastContext';
 import { Modal } from '../../components/common/Modal';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
-import { toDisplayClassName } from '../../utils/academicClassOrder';
-import { ShieldCheck, Search, Mail, KeyRound, GraduationCap } from 'lucide-react';
+import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
+import { ShieldCheck, Search, Mail, KeyRound, GraduationCap, UserPlus } from 'lucide-react';
+
+const EMPTY_ADD_FORM = { name: '', email: '', password: '', role: 'TEACHER', assignedClass: '', assignedSection: '' };
 
 export const StaffAccountsPage = () => {
   const [staff, setStaff] = useState([]);
@@ -14,6 +16,10 @@ export const StaffAccountsPage = () => {
   const [resetModalUser, setResetModalUser] = useState(null);
   const [resetPasswordValue, setResetPasswordValue] = useState('');
   const [resetting, setResetting] = useState(false);
+
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
+  const [addingStaff, setAddingStaff] = useState(false);
 
   const { addToast } = useToast();
 
@@ -52,6 +58,41 @@ export const StaffAccountsPage = () => {
     }
   };
 
+  const handleOpenAdd = () => {
+    setAddForm(EMPTY_ADD_FORM);
+    setAddModalOpen(true);
+  };
+
+  const handleAddStaff = async (e) => {
+    e.preventDefault();
+    if (!addForm.name.trim() || !addForm.email.trim()) {
+      addToast('Name and email are required.', 'warning');
+      return;
+    }
+    if (!addForm.password || addForm.password.trim().length < 4) {
+      addToast('Password must be at least 4 characters.', 'warning');
+      return;
+    }
+    setAddingStaff(true);
+    try {
+      await authService.createStaff({
+        name: addForm.name.trim(),
+        email: addForm.email.trim(),
+        password: addForm.password.trim(),
+        role: addForm.role,
+        assignedClass: addForm.role === 'TEACHER' ? (addForm.assignedClass || null) : null,
+        assignedSection: addForm.role === 'TEACHER' ? (addForm.assignedSection.trim() || null) : null,
+      });
+      addToast(`${addForm.role === 'ADMIN' ? 'Administrator' : 'Teacher'} account created for ${addForm.name.trim()}.`, 'success');
+      setAddModalOpen(false);
+      loadStaff();
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to create staff account', 'error');
+    } finally {
+      setAddingStaff(false);
+    }
+  };
+
   const filteredStaff = staff.filter((s) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -68,10 +109,15 @@ export const StaffAccountsPage = () => {
         <div>
           <h1 className="page-title">Staff Accounts</h1>
           <p className="page-subtitle">
-            Every Admin and Teacher login. New staff register themselves at the Register page — reset a forgotten password here.
+            Every Admin and Teacher login. Add new staff or reset a forgotten password here.
           </p>
         </div>
-        <span className="badge badge-secondary">{staff.length} Accounts</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span className="badge badge-secondary">{staff.length} Accounts</span>
+          <button type="button" className="btn btn-primary" onClick={handleOpenAdd}>
+            <UserPlus size={16} /> Add Staff
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: '1.25rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
@@ -169,6 +215,100 @@ export const StaffAccountsPage = () => {
             autoFocus
           />
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+        title="Add Staff Account"
+        icon={UserPlus}
+        footer={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setAddModalOpen(false)}>Cancel</button>
+            <button type="submit" form="addStaffForm" className="btn btn-primary" disabled={addingStaff}>
+              {addingStaff ? 'Creating...' : 'Create Account'}
+            </button>
+          </>
+        }
+      >
+        <form id="addStaffForm" onSubmit={handleAddStaff}>
+          <div className="form-group">
+            <label className="form-label">Full Name</label>
+            <input
+              type="text"
+              className="form-input"
+              required
+              placeholder="e.g. Fathima Begum"
+              value={addForm.name}
+              onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Email Address</label>
+            <input
+              type="email"
+              className="form-input"
+              required
+              placeholder="e.g. teacher@school.com"
+              value={addForm.email}
+              onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input
+              type="text"
+              className="form-input"
+              required
+              placeholder="At least 4 characters"
+              value={addForm.password}
+              onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Role</label>
+            <select
+              className="form-select"
+              value={addForm.role}
+              onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
+            >
+              <option value="TEACHER">Teacher</option>
+              <option value="ADMIN">Administrator</option>
+            </select>
+          </div>
+
+          {addForm.role === 'TEACHER' && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Assigned Class (optional)</label>
+                <select
+                  className="form-select"
+                  value={addForm.assignedClass}
+                  onChange={(e) => setAddForm({ ...addForm, assignedClass: e.target.value })}
+                >
+                  <option value="">-- Not assigned yet --</option>
+                  {CLASS_CONFIG.map((c) => (
+                    <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Assigned Section (optional)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. A, or Lily"
+                  value={addForm.assignedSection}
+                  onChange={(e) => setAddForm({ ...addForm, assignedSection: e.target.value })}
+                />
+              </div>
+            </>
+          )}
+        </form>
       </Modal>
     </div>
   );

@@ -31,4 +31,11 @@ public class RegisterRequest {
      * Ignored for ADMIN and TEACHER roles.
      */
     private Long studentId;
+
+    /**
+     * Optional: for TEACHER role, the class/section they're assigned to.
+     * Ignored for ADMIN and PARENT roles.
+     */
+    private String assignedClass;
+    private String assignedSection;
 }

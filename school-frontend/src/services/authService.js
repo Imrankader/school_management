@@ -13,12 +13,6 @@ export const authService = {
     return response.data;
   },
 
-  register: async (userData) => {
-    // userData: { username, password, email, role }
-    const response = await api.post('/api/auth/register', userData);
-    return response.data;
-  },
-
   validate: async () => {
     const response = await api.get('/api/auth/validate');
     return response.data;
@@ -38,6 +32,13 @@ export const authService = {
 
   getStaffAccounts: async () => {
     const response = await api.get('/api/auth/staff');
+    return response.data;
+  },
+
+  createStaff: async (staffData) => {
+    // staffData: { name, email, password, role: 'ADMIN'|'TEACHER', assignedClass, assignedSection }
+    // Uses POST /api/auth/register — the backend allows an authenticated ADMIN to create any role.
+    const response = await api.post('/api/auth/register', staffData);
     return response.data;
   },
 
