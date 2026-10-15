@@ -41,7 +41,8 @@ export const MarksPage = () => {
 
   // Tab 1: Marks Entry State
   const [entryClass, setEntryClass] = useState('');
-  const [entrySection, setEntrySection] = useState('A');
+  const [entrySection, setEntrySection] = useState('');
+  const [entrySectionOptions, setEntrySectionOptions] = useState([]);
   const [entryExam, setEntryExam] = useState('');
   const [entrySubject, setEntrySubject] = useState('');
   const [entryMaxMarks, setEntryMaxMarks] = useState(100);
@@ -54,6 +55,7 @@ export const MarksPage = () => {
   // Tab 2: Marks View State
   const [viewClass, setViewClass] = useState('');
   const [viewSection, setViewSection] = useState('');
+  const [viewSectionOptions, setViewSectionOptions] = useState([]);
   const [viewExam, setViewExam] = useState('');
   const [viewSubject, setViewSubject] = useState('');
   const [viewSearchQuery, setViewSearchQuery] = useState('');
@@ -127,6 +129,24 @@ export const MarksPage = () => {
     return String(sec).trim().replace(/^section\s*/i, '').trim().toUpperCase();
   };
 
+  // Sections are free-text per class (e.g. LKG uses "Lily", "Rose"; other classes use "A"/"B"),
+  // so the dropdown must reflect whatever is actually stored for that class, not a fixed A-D list.
+  const fetchSectionsForClass = async (className) => {
+    if (!className) return [];
+    try {
+      const res = await studentService.getActiveStudentsByClass(className);
+      const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+      const sections = [...new Set(
+        list.map((s) => (s.section || '').trim()).filter(Boolean)
+      )];
+      sections.sort((a, b) => a.localeCompare(b));
+      return sections;
+    } catch (err) {
+      console.error('Error fetching sections for class', className, err);
+      return [];
+    }
+  };
+
   // Load master data on mount
   useEffect(() => {
     loadMasterData();
@@ -183,6 +203,39 @@ export const MarksPage = () => {
       setLoadingMaster(false);
     }
   };
+
+  // Whenever the entry class changes, reload that class's real section list and
+  // re-point entrySection at a section that actually exists for it.
+  useEffect(() => {
+    if (!entryClass) {
+      setEntrySectionOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const sections = await fetchSectionsForClass(entryClass);
+      if (cancelled) return;
+      setEntrySectionOptions(sections);
+      setEntrySection((prev) => (sections.includes(prev) ? prev : (sections[0] || '')));
+    })();
+    return () => { cancelled = true; };
+  }, [entryClass]);
+
+  // Same for the view tab's section filter.
+  useEffect(() => {
+    if (!viewClass) {
+      setViewSectionOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const sections = await fetchSectionsForClass(viewClass);
+      if (cancelled) return;
+      setViewSectionOptions(sections);
+      setViewSection((prev) => (sections.includes(prev) ? prev : ''));
+    })();
+    return () => { cancelled = true; };
+  }, [viewClass]);
 
   // Whenever entry filters change, fetch students and any existing marks for them
   useEffect(() => {
@@ -843,11 +896,15 @@ export const MarksPage = () => {
                   className="form-control"
                   value={entrySection}
                   onChange={(e) => setEntrySection(e.target.value)}
+                  disabled={entrySectionOptions.length === 0}
                 >
-                  <option value="A">Section A</option>
-                  <option value="B">Section B</option>
-                  <option value="C">Section C</option>
-                  <option value="D">Section D</option>
+                  {entrySectionOptions.length === 0 ? (
+                    <option value="">No sections found</option>
+                  ) : (
+                    entrySectionOptions.map((sec) => (
+                      <option key={sec} value={sec}>Section {sec}</option>
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -1070,10 +1127,9 @@ export const MarksPage = () => {
                   onChange={(e) => setViewSection(e.target.value)}
                 >
                   <option value="">All Sections</option>
-                  <option value="A">Section A</option>
-                  <option value="B">Section B</option>
-                  <option value="C">Section C</option>
-                  <option value="D">Section D</option>
+                  {viewSectionOptions.map((sec) => (
+                    <option key={sec} value={sec}>Section {sec}</option>
+                  ))}
                 </select>
               </div>
 
