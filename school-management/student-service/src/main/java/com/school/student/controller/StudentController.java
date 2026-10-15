@@ -218,6 +218,21 @@ public class StudentController {
         return ResponseEntity.ok(ApiResponse.success("Student updated successfully", updated));
     }
 
+    /**
+     * PATCH /api/students/{id}/parent-password — Admin resets the parent portal login password
+     * for this student. Deliberately separate from PUT /{id} so it never touches any other field.
+     */
+    @PatchMapping("/{id}/parent-password")
+    public ResponseEntity<ApiResponse<Void>> resetParentPassword(
+            @PathVariable("id") Long id,
+            @RequestBody java.util.Map<String, String> body,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        ResponseEntity<ApiResponse<Void>> denied = denyUnlessRole(authHeader, "ADMIN");
+        if (denied != null) return denied;
+        studentService.resetParentPassword(id, body.get("newPassword"));
+        return ResponseEntity.ok(ApiResponse.success("Parent login password updated", null));
+    }
+
     /** DELETE /api/students/{id} */
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteStudent(
@@ -303,18 +318,25 @@ public class StudentController {
 
     /**
      * GET /api/students/export
-     * Download all students as school_management_backup.xlsx
+     * Download students (same column layout as the bulk-import template) as an .xlsx file.
+     * With no className (or "ALL"), exports the whole school; otherwise just that one class.
      */
     @GetMapping("/export")
-    public ResponseEntity<?> exportStudents(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+    public ResponseEntity<?> exportStudents(@RequestParam(value = "className", required = false) String className,
+                                             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         ResponseEntity<ApiResponse<Object>> denied = denyUnlessRole(authHeader, "ADMIN");
         if (denied != null) return denied;
         try {
-            byte[] excelBytes = excelExportService.generateBackup();
+            byte[] excelBytes = excelExportService.generateBackup(className);
+            boolean isClassScoped = className != null && !className.isBlank()
+                    && !"ALL".equalsIgnoreCase(className.trim()) && !"ALL CLASSES".equalsIgnoreCase(className.trim());
+            String filename = isClassScoped
+                    ? ("students_" + className.trim().replaceAll("[^A-Za-z0-9]+", "_") + ".xlsx")
+                    : "school_management_backup.xlsx";
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.parseMediaType(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
-            headers.setContentDispositionFormData("attachment", "school_management_backup.xlsx");
+            headers.setContentDispositionFormData("attachment", filename);
             headers.setContentLength(excelBytes.length);
             return ResponseEntity.ok().headers(headers).body(excelBytes);
         } catch (IOException e) {

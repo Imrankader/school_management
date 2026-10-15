@@ -11,6 +11,7 @@ import {
   FileText,
   Bell,
   BookMarked,
+  KeyRound,
   X
 } from 'lucide-react';
 
@@ -111,6 +112,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
             >
               <Bell size={18} />
               <span>Notifications</span>
+            </NavLink>
+            <NavLink
+              to="/admin/staff"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <KeyRound size={18} />
+              <span>Staff Accounts</span>
             </NavLink>
           </>
         )}

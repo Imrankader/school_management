@@ -61,11 +61,17 @@ export const studentService = {
     return response.data;
   },
 
-  exportExcel: async () => {
+  exportExcel: async (className) => {
     const response = await api.get('/api/students/export', {
+      params: className ? { className } : {},
       responseType: 'blob',
     });
     return response;
+  },
+
+  resetParentPassword: async (id, newPassword) => {
+    const response = await api.patch(`/api/students/${id}/parent-password`, { newPassword });
+    return response.data;
   },
 
   getClassSummary: async () => {

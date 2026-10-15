@@ -233,6 +233,22 @@ public class StudentService {
         return toDTO(updated);
     }
 
+    /**
+     * Admin resets a student's parent-portal login password directly — deliberately separate
+     * from updateStudent (which overwrites every field) so resetting a forgotten password can
+     * never accidentally blank out the rest of the student's record.
+     */
+    public void resetParentPassword(Long id, String newPassword) {
+        if (newPassword == null || newPassword.trim().length() < 4) {
+            throw new BadRequestException("Password must be at least 4 characters.");
+        }
+        Student existing = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", "id", id));
+        existing.setPasswordHash(passwordEncoder.encode(newPassword.trim()));
+        studentRepository.save(existing);
+        log.info("Admin reset parent login password for student id: {}", id);
+    }
+
     public void deleteStudent(Long id) {
         if (!studentRepository.existsById(id)) {
             throw new ResourceNotFoundException("Student", "id", id);
@@ -334,6 +350,7 @@ public class StudentService {
                 .joiningDate(student.getJoiningDate())
                 .isActive(student.getIsActive())
                 .phoneNumber(student.getPhoneNumber())
+                .hasParentLogin(student.getPasswordHash() != null && !student.getPasswordHash().isBlank())
                 .build();
     }
 

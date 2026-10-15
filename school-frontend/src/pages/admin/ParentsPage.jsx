@@ -12,6 +12,7 @@ import {
   UserCheck,
   Shield,
   Baby,
+  KeyRound,
 } from 'lucide-react';
 
 export const ParentsPage = () => {
@@ -32,9 +33,33 @@ export const ParentsPage = () => {
 
   const { addToast } = useToast();
 
+  // Reset password
+  const [resetModalUser, setResetModalUser] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetting, setResetting] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleResetPassword = async () => {
+    if (!resetModalUser) return;
+    if (!resetPasswordValue || resetPasswordValue.trim().length < 4) {
+      addToast('Password must be at least 4 characters.', 'warning');
+      return;
+    }
+    setResetting(true);
+    try {
+      await authService.resetUserPassword(resetModalUser.id, resetPasswordValue.trim());
+      addToast(`Password updated for ${resetModalUser.name}.`, 'success');
+      setResetModalUser(null);
+      setResetPasswordValue('');
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to update password', 'error');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -152,12 +177,13 @@ export const ParentsPage = () => {
               <th>Email Address</th>
               <th>Role</th>
               <th>Assigned Student</th>
+              <th style={{ textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredParents.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
+                <td colSpan="6" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
                   {loading ? 'Fetching parent accounts...' : 'No parent accounts found.'}
                 </td>
               </tr>
@@ -188,6 +214,15 @@ export const ParentsPage = () => {
                           {linkedStudent.name || `${linkedStudent.firstName || ''} ${linkedStudent.lastName || ''}`} ({linkedStudent.className}-{linkedStudent.section})
                         </span>
                       )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => { setResetModalUser(p); setResetPasswordValue(''); }}
+                      >
+                        <KeyRound size={13} /> Reset Password
+                      </button>
                     </td>
                   </tr>
                 );
@@ -267,6 +302,34 @@ export const ParentsPage = () => {
             </select>
           </div>
         </form>
+      </Modal>
+
+      {/* Reset Password Modal */}
+      <Modal
+        isOpen={!!resetModalUser}
+        onClose={() => setResetModalUser(null)}
+        title={`Reset Password — ${resetModalUser?.name || ''}`}
+        icon={KeyRound}
+        footer={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setResetModalUser(null)}>Cancel</button>
+            <button type="button" className="btn btn-primary" onClick={handleResetPassword} disabled={resetting}>
+              {resetting ? 'Saving...' : 'Save New Password'}
+            </button>
+          </>
+        }
+      >
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label className="form-label">New Password</label>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="At least 4 characters"
+            value={resetPasswordValue}
+            onChange={(e) => setResetPasswordValue(e.target.value)}
+            autoFocus
+          />
+        </div>
       </Modal>
     </div>
   );

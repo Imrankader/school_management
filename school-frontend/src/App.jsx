@@ -33,6 +33,7 @@ const Register = lazyPage(() => import('./pages/Register'), 'Register');
 const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'), 'AdminDashboard');
 const StudentsPage = lazyPage(() => import('./pages/admin/StudentsPage'), 'StudentsPage');
 const ParentsPage = lazyPage(() => import('./pages/admin/ParentsPage'), 'ParentsPage');
+const StaffAccountsPage = lazyPage(() => import('./pages/admin/StaffAccountsPage'), 'StaffAccountsPage');
 const MarksPage = lazyPage(() => import('./pages/admin/MarksPage'), 'MarksPage');
 const AttendancePage = lazyPage(() => import('./pages/admin/AttendancePage'), 'AttendancePage');
 const FeesPage = lazyPage(() => import('./pages/admin/FeesPage'), 'FeesPage');
@@ -93,6 +94,7 @@ export const App = () => {
                 <Route index element={<AdminDashboard />} />
                  <Route path="students" element={<StudentsPage />} />
                 <Route path="parents" element={<ParentsPage />} />
+                <Route path="staff" element={<StaffAccountsPage />} />
                 <Route path="marks" element={<MarksPage />} />
                 <Route path="academics" element={<Navigate to="/admin/marks" replace />} />
                 <Route path="attendance" element={<AttendancePage />} />

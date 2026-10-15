@@ -25,7 +25,10 @@ import {
   Layers,
   RotateCcw,
   Users,
-  Download
+  Download,
+  KeyRound,
+  ShieldCheck,
+  ShieldOff
 } from 'lucide-react';
 
 export const StudentsPage = () => {
@@ -90,7 +93,37 @@ export const StudentsPage = () => {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sectionFilter, setSectionFilter] = useState('ALL');
 
+  // Parent login — reset from inside the View Student modal
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [newParentPassword, setNewParentPassword] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+
   const { addToast } = useToast();
+
+  useEffect(() => {
+    setShowResetPassword(false);
+    setNewParentPassword('');
+  }, [viewingStudent?.id]);
+
+  const handleResetParentPassword = async () => {
+    if (!viewingStudent) return;
+    if (!newParentPassword || newParentPassword.trim().length < 4) {
+      addToast('Password must be at least 4 characters.', 'warning');
+      return;
+    }
+    setResettingPassword(true);
+    try {
+      await studentService.resetParentPassword(viewingStudent.id, newParentPassword.trim());
+      addToast(`Parent login password updated for ${viewingStudent.name}.`, 'success');
+      setViewingStudent({ ...viewingStudent, hasParentLogin: true });
+      setShowResetPassword(false);
+      setNewParentPassword('');
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to update password', 'error');
+    } finally {
+      setResettingPassword(false);
+    }
+  };
 
   // Runs once per page load: if the form modal was still open when the page
   // last refreshed, let the admin know their typed details are still there.
@@ -101,33 +134,27 @@ export const StudentsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleExportCSV = (studentList, filenamePrefix = 'Students') => {
-    if (!studentList || studentList.length === 0) {
-      addToast('No student records to export', 'warning');
-      return;
+  // Same backend endpoint (and so the same column template) used everywhere else students are
+  // exported — className omitted exports the whole school, passed in scopes it to one class.
+  const [exporting, setExporting] = useState(false);
+  const handleExportExcel = async (className, filenamePrefix) => {
+    try {
+      setExporting(true);
+      const response = await studentService.exportExcel(className);
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      addToast('Student records exported successfully', 'success');
+    } catch (err) {
+      addToast('Failed to export student data', 'error');
+    } finally {
+      setExporting(false);
     }
-    const headers = ['Admission No', 'Student Name', 'Class', 'Section', 'Gender', 'DOB', 'Father Mobile', 'Mother Mobile', 'Address', 'Status'];
-    const rows = studentList.map((s) => [
-      s.admissionNumber || s.rollNumber || '',
-      `"${(s.name || '').replace(/"/g, '""')}"`,
-      s.className || '',
-      s.section || '',
-      s.gender || '',
-      s.dateOfBirth || '',
-      s.fatherMobileNumber || s.contactNumber || '',
-      s.motherMobileNumber || '',
-      `"${(s.address || '').replace(/"/g, '""')}"`,
-      s.isActive !== false ? 'ACTIVE' : 'INACTIVE',
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    addToast('Student records exported successfully', 'success');
   };
 
   useEffect(() => {
@@ -635,11 +662,12 @@ export const StudentsPage = () => {
                 type="button"
                 className="btn btn-secondary"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem' }}
-                onClick={() => handleExportCSV(masterStudents.length > 0 ? masterStudents : students, 'EduCore_Students')}
-                title="Export student directory to CSV"
+                onClick={() => handleExportExcel(null, 'EduCore_Students')}
+                disabled={exporting}
+                title="Export every student, in the same template used for bulk import"
               >
                 <Download size={15} />
-                Export
+                {exporting ? 'Exporting...' : 'Export'}
               </button>
 
               <button
@@ -1438,8 +1466,9 @@ export const StudentsPage = () => {
                   height: '38px',
                   padding: '0 0.85rem',
                 }}
-                onClick={() => handleExportCSV(filteredStudents, `${selectedClass}_Students`)}
-                title="Export class students to CSV"
+                onClick={() => handleExportExcel(selectedClass, `${selectedClass}_Students`)}
+                disabled={exporting}
+                title="Export this class, in the same template used for bulk import"
               >
                 <Download size={14} />
                 Export
@@ -2131,6 +2160,58 @@ export const StudentsPage = () => {
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', marginTop: '2px' }}>{viewingStudent.address}</div>
               </div>
             )}
+
+            {/* Parent Portal Login */}
+            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Parent Portal Login
+              </div>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+                padding: '0.65rem 0.85rem', background: 'var(--bg-main)', borderRadius: 'var(--radius-sm)',
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)' }}>Login Mobile Number</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {viewingStudent.phoneNumber || 'Not set'}
+                    <span className={`badge ${viewingStudent.hasParentLogin ? 'badge-success' : 'badge-secondary'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      {viewingStudent.hasParentLogin ? <ShieldCheck size={11} /> : <ShieldOff size={11} />}
+                      {viewingStudent.hasParentLogin ? 'Password Set' : 'No Password'}
+                    </span>
+                  </div>
+                </div>
+                {!showResetPassword && (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowResetPassword(true)}>
+                    <KeyRound size={13} /> {viewingStudent.hasParentLogin ? 'Reset Password' : 'Set Password'}
+                  </button>
+                )}
+              </div>
+
+              {showResetPassword && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', alignItems: 'flex-start' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="New password (min. 4 characters)"
+                    value={newParentPassword}
+                    onChange={(e) => setNewParentPassword(e.target.value)}
+                    style={{ flex: 1 }}
+                    autoFocus
+                  />
+                  <button type="button" className="btn btn-primary btn-sm" onClick={handleResetParentPassword} disabled={resettingPassword}>
+                    {resettingPassword ? 'Saving...' : 'Save'}
+                  </button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowResetPassword(false); setNewParentPassword(''); }}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {!viewingStudent.phoneNumber && (
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
+                  No mobile number is set for this student — add one via Edit Student before setting a password.
+                </p>
+              )}
+            </div>
           </div>
         </Modal>
       )}

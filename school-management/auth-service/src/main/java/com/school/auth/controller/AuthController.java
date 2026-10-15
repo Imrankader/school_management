@@ -88,6 +88,27 @@ public class AuthController {
                 .body(ApiResponse.success("Parent account created and linked to student", authResponse));
     }
 
+    /**
+     * GET /api/auth/staff — Every Admin and Teacher account. ADMIN only (enforced by SecurityConfig).
+     */
+    @GetMapping("/staff")
+    public ResponseEntity<ApiResponse<List<UserSummaryDTO>>> getStaff() {
+        return ResponseEntity.ok(ApiResponse.success(userService.getStaffUsers()));
+    }
+
+    /**
+     * PUT /api/auth/users/{id}/password — Admin resets any user's password (staff or a parent
+     * account created via POST /api/auth/parents). ADMIN only (enforced by SecurityConfig).
+     * Request body: { newPassword }
+     */
+    @PutMapping("/users/{id}/password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @PathVariable("id") Long id,
+            @RequestBody java.util.Map<String, String> body) {
+        userService.resetPassword(id, body.get("newPassword"));
+        return ResponseEntity.ok(ApiResponse.success("Password updated", null));
+    }
+
     private boolean isAdminCaller() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null

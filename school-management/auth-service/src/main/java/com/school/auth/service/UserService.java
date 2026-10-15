@@ -227,4 +227,36 @@ public class UserService {
                         .build())
                 .toList();
     }
+
+    /** Every Admin and Teacher account, for the admin-facing Staff Accounts page. */
+    public List<UserSummaryDTO> getStaffUsers() {
+        return java.util.stream.Stream.concat(
+                        userRepository.findByRole(Role.ADMIN).stream(),
+                        userRepository.findByRole(Role.TEACHER).stream())
+                .map(u -> UserSummaryDTO.builder()
+                        .id(u.getId())
+                        .name(u.getName())
+                        .email(u.getEmail())
+                        .role(u.getRole().name())
+                        .assignedClass(u.getAssignedClass())
+                        .assignedSection(u.getAssignedSection())
+                        .build())
+                .sorted(java.util.Comparator.comparing(UserSummaryDTO::getRole).thenComparing(UserSummaryDTO::getName))
+                .toList();
+    }
+
+    /**
+     * Admin resets any user's password — staff or a parent account created via
+     * POST /api/auth/parents. Deliberately scoped to just the password field.
+     */
+    public void resetPassword(Long userId, String newPassword) {
+        if (newPassword == null || newPassword.trim().length() < 4) {
+            throw new BadRequestException("Password must be at least 4 characters.");
+        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+        user.setPassword(passwordEncoder.encode(newPassword.trim()));
+        userRepository.save(user);
+        log.info("Admin reset password for user id: {} ({})", userId, user.getEmail());
+    }
 }

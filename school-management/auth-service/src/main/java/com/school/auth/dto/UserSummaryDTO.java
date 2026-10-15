@@ -18,4 +18,7 @@ public class UserSummaryDTO {
     private String name;
     private String email;
     private Long studentId;
+    private String role;
+    private String assignedClass;
+    private String assignedSection;
 }

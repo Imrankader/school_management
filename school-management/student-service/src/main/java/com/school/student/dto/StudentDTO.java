@@ -61,6 +61,11 @@ public class StudentDTO {
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String password;
 
+    // Read-only: whether a parent portal password is currently set (never the hash itself)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @Builder.Default
+    private Boolean hasParentLogin = false;
+
     public void setParentLoginPhoneNumber(String parentLoginPhoneNumber) {
         if (parentLoginPhoneNumber != null && !parentLoginPhoneNumber.isBlank()) {
             this.phoneNumber = parentLoginPhoneNumber.trim();

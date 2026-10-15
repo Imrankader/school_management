@@ -34,5 +34,15 @@ export const authService = {
     // Uses dedicated POST /api/auth/parents which enforces role=PARENT and requires studentId
     const response = await api.post('/api/auth/parents', parentData);
     return response.data;
-  }
+  },
+
+  getStaffAccounts: async () => {
+    const response = await api.get('/api/auth/staff');
+    return response.data;
+  },
+
+  resetUserPassword: async (userId, newPassword) => {
+    const response = await api.put(`/api/auth/users/${userId}/password`, { newPassword });
+    return response.data;
+  },
 };
