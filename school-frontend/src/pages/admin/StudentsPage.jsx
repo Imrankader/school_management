@@ -28,7 +28,8 @@ import {
   Download,
   KeyRound,
   ShieldCheck,
-  ShieldOff
+  ShieldOff,
+  Copy
 } from 'lucide-react';
 
 export const StudentsPage = () => {
@@ -97,12 +98,16 @@ export const StudentsPage = () => {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [newParentPassword, setNewParentPassword] = useState('');
   const [resettingPassword, setResettingPassword] = useState(false);
+  // Passwords are stored as a one-way hash, so an old one can never be looked up again —
+  // this only remembers the value for the moment right after *this admin* just set it.
+  const [justSetPassword, setJustSetPassword] = useState('');
 
   const { addToast } = useToast();
 
   useEffect(() => {
     setShowResetPassword(false);
     setNewParentPassword('');
+    setJustSetPassword('');
   }, [viewingStudent?.id]);
 
   const handleResetParentPassword = async () => {
@@ -113,11 +118,13 @@ export const StudentsPage = () => {
     }
     setResettingPassword(true);
     try {
-      await studentService.resetParentPassword(viewingStudent.id, newParentPassword.trim());
+      const savedPassword = newParentPassword.trim();
+      await studentService.resetParentPassword(viewingStudent.id, savedPassword);
       addToast(`Parent login password updated for ${viewingStudent.name}.`, 'success');
       setViewingStudent({ ...viewingStudent, hasParentLogin: true });
       setShowResetPassword(false);
       setNewParentPassword('');
+      setJustSetPassword(savedPassword);
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to update password', 'error');
     } finally {
@@ -2203,6 +2210,33 @@ export const StudentsPage = () => {
                   </button>
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => { setShowResetPassword(false); setNewParentPassword(''); }}>
                     Cancel
+                  </button>
+                </div>
+              )}
+              {justSetPassword && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+                  marginTop: '0.6rem', padding: '0.6rem 0.85rem', background: 'rgba(34, 197, 94, 0.08)',
+                  border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: 'var(--radius-sm)',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>New password — note it down now, it can't be looked up again later</div>
+                    <code style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>{justSetPassword}</code>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      if (!navigator.clipboard) {
+                        addToast('Clipboard access not available — please copy it manually.', 'warning');
+                        return;
+                      }
+                      navigator.clipboard.writeText(justSetPassword)
+                        .then(() => addToast('Password copied to clipboard.', 'success'))
+                        .catch(() => addToast('Could not copy automatically — please copy it manually.', 'warning'));
+                    }}
+                  >
+                    <Copy size={13} /> Copy
                   </button>
                 </div>
               )}
