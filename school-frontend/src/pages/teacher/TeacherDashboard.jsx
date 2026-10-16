@@ -10,13 +10,12 @@ import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../../components/common/Modal';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import {
-  Award,
   BookOpen,
   Calendar,
   Sun,
   FileText,
   Plus,
-  Trash2,
+  Edit2,
   Bell,
   RefreshCw,
   ExternalLink,
@@ -39,6 +38,15 @@ export const TeacherDashboard = () => {
     section: 'A',
     dueDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
   });
+  const [hwEditModal, setHwEditModal] = useState(false);
+  const [editingHw, setEditingHw] = useState(null);
+  const [hwEditForm, setHwEditForm] = useState({
+    title: '',
+    description: '',
+    className: '',
+    section: '',
+    dueDate: '',
+  });
 
   // Holidays State
   const [holidays, setHolidays] = useState([]);
@@ -53,9 +61,11 @@ export const TeacherDashboard = () => {
   const [myLeaveForm, setMyLeaveForm] = useState({
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
-    reason: '',
+    selectedReasonId: '',
+    customReason: '',
   });
   const [submittingMyLeave, setSubmittingMyLeave] = useState(false);
+  const [leaveReasons, setLeaveReasons] = useState([]);
 
   // Notifications State
   const [notifications, setNotifications] = useState([]);
@@ -71,11 +81,12 @@ export const TeacherDashboard = () => {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [hwRes, holRes, lvRes, myLvRes] = await Promise.allSettled([
+      const [hwRes, holRes, lvRes, myLvRes, reasonRes] = await Promise.allSettled([
         homeworkService.getAll(),
         holidayService.getAll(),
         leaveService.getTeacherLeaves(),
         leaveService.getMyTeacherLeave(),
+        leaveService.getActiveReasons(),
       ]);
 
       if (hwRes.status === 'fulfilled' && hwRes.value?.data) setHomeworkList(hwRes.value.data);
@@ -88,6 +99,7 @@ export const TeacherDashboard = () => {
         const myLvData = myLvRes.value?.data || (Array.isArray(myLvRes.value) ? myLvRes.value : []);
         setMyLeaves(Array.isArray(myLvData) ? myLvData : []);
       }
+      if (reasonRes.status === 'fulfilled' && reasonRes.value?.data) setLeaveReasons(reasonRes.value.data);
     } catch (err) {
       addToast('Failed to load teacher portal data', 'error');
     } finally {
@@ -98,8 +110,19 @@ export const TeacherDashboard = () => {
   // My Leave handlers
   const handleSubmitMyLeave = async (e) => {
     e.preventDefault();
-    if (!myLeaveForm.reason.trim()) {
-      addToast('Please enter a reason for your leave', 'warning');
+    let reasonText = '';
+    if (myLeaveForm.selectedReasonId === 'OTHER') {
+      if (!myLeaveForm.customReason.trim()) {
+        addToast('Please enter a custom reason', 'warning');
+        return;
+      }
+      reasonText = myLeaveForm.customReason.trim();
+    } else if (myLeaveForm.selectedReasonId) {
+      const found = leaveReasons.find((r) => String(r.id) === String(myLeaveForm.selectedReasonId));
+      reasonText = found ? `${found.englishReason} / ${found.tamilMeaning}` : '';
+    }
+    if (!reasonText) {
+      addToast('Please select or enter a reason', 'warning');
       return;
     }
     try {
@@ -108,11 +131,11 @@ export const TeacherDashboard = () => {
         teacherName: user?.name || 'Teacher',
         leaveDate: myLeaveForm.startDate,
         endDate: myLeaveForm.endDate || null,
-        reason: myLeaveForm.reason.trim(),
+        reason: reasonText,
       });
       addToast('Leave recorded successfully', 'success');
       setMyLeaveModal(false);
-      setMyLeaveForm({ startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
+      setMyLeaveForm({ startDate: new Date().toISOString().split('T')[0], endDate: '', selectedReasonId: '', customReason: '' });
       const res = await leaveService.getMyTeacherLeave();
       if (res.success && res.data) setMyLeaves(res.data);
     } catch (err) {
@@ -143,15 +166,30 @@ export const TeacherDashboard = () => {
     }
   };
 
-  const handleDeleteHomework = async (id) => {
-    if (!window.confirm('Delete this homework?')) return;
+  const openEditHomeworkModal = (hw) => {
+    setEditingHw(hw);
+    setHwEditForm({
+      title: hw.title || '',
+      description: hw.description || '',
+      className: hw.className || '',
+      section: hw.section || '',
+      dueDate: hw.dueDate || '',
+    });
+    setHwEditModal(true);
+  };
+
+  const handleUpdateHomework = async (e) => {
+    e.preventDefault();
+    if (!editingHw) return;
     try {
-      await homeworkService.delete(id);
-      addToast('Homework deleted', 'success');
+      await homeworkService.update(editingHw.id, hwEditForm);
+      addToast('Homework updated', 'success');
+      setHwEditModal(false);
+      setEditingHw(null);
       const res = await homeworkService.getAll();
       if (res.success && res.data) setHomeworkList(res.data);
     } catch (err) {
-      addToast('Failed to delete homework', 'error');
+      addToast(err.response?.data?.message || 'Failed to update homework', 'error');
     }
   };
 
@@ -182,15 +220,6 @@ export const TeacherDashboard = () => {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-          <Link
-            to="/teacher/marks"
-            className="btn btn-primary btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <Award size={15} />
-            <span>Open Gradebook / Marks</span>
-            <ExternalLink size={13} style={{ opacity: 0.8 }} />
-          </Link>
           <button
             onClick={loadInitialData}
             disabled={loading}
@@ -279,8 +308,8 @@ export const TeacherDashboard = () => {
                         </span>
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteHomework(hw.id)} title="Delete homework">
-                          <Trash2 size={13} />
+                        <button className="btn btn-secondary btn-sm" onClick={() => openEditHomeworkModal(hw)} title="Edit homework">
+                          <Edit2 size={13} />
                         </button>
                       </td>
                     </tr>
@@ -584,6 +613,80 @@ export const TeacherDashboard = () => {
         </form>
       </Modal>
 
+      {/* Edit Homework Modal */}
+      <Modal
+        isOpen={hwEditModal}
+        onClose={() => setHwEditModal(false)}
+        title="Edit Homework"
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setHwEditModal(false)}>Cancel</button>
+            <button type="submit" form="teacherHwEditForm" className="btn btn-primary">Save Changes</button>
+          </>
+        }
+      >
+        <form id="teacherHwEditForm" onSubmit={handleUpdateHomework}>
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label className="form-label">Homework Title *</label>
+            <input
+              type="text"
+              className="form-control"
+              required
+              placeholder="e.g. Chapter 5 Practice Questions"
+              value={hwEditForm.title}
+              onChange={(e) => setHwEditForm({ ...hwEditForm, title: e.target.value })}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            <div className="form-group">
+              <label className="form-label">Class Name *</label>
+              <select
+                className="form-control"
+                required
+                value={hwEditForm.className}
+                onChange={(e) => setHwEditForm({ ...hwEditForm, className: e.target.value })}
+              >
+                <option value="" disabled>Select Class</option>
+                {CLASS_CONFIG.map((c) => (
+                  <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Section</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="e.g. A"
+                value={hwEditForm.section}
+                onChange={(e) => setHwEditForm({ ...hwEditForm, section: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label className="form-label">Due Date *</label>
+            <input
+              type="date"
+              className="form-control"
+              required
+              value={hwEditForm.dueDate}
+              onChange={(e) => setHwEditForm({ ...hwEditForm, dueDate: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Description / Instructions *</label>
+            <textarea
+              className="form-control"
+              rows={3}
+              required
+              placeholder="Provide instructions for students..."
+              value={hwEditForm.description}
+              onChange={(e) => setHwEditForm({ ...hwEditForm, description: e.target.value })}
+            />
+          </div>
+        </form>
+      </Modal>
+
       {/* My Leave Modal */}
       <Modal
         isOpen={myLeaveModal}
@@ -621,17 +724,37 @@ export const TeacherDashboard = () => {
               />
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: myLeaveForm.selectedReasonId === 'OTHER' ? '1rem' : 0 }}>
             <label className="form-label">Reason *</label>
-            <textarea
+            <select
               className="form-control"
-              rows={3}
               required
-              placeholder="Reason for leave..."
-              value={myLeaveForm.reason}
-              onChange={(e) => setMyLeaveForm({ ...myLeaveForm, reason: e.target.value })}
-            />
+              value={myLeaveForm.selectedReasonId}
+              onChange={(e) => setMyLeaveForm({ ...myLeaveForm, selectedReasonId: e.target.value })}
+            >
+              <option value="">Select Reason</option>
+              {leaveReasons.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.englishReason} / {r.tamilMeaning}
+                </option>
+              ))}
+              <option value="OTHER">Other / மற்றவை</option>
+            </select>
           </div>
+
+          {myLeaveForm.selectedReasonId === 'OTHER' && (
+            <div className="form-group">
+              <label className="form-label">Enter your reason *</label>
+              <textarea
+                className="form-control"
+                rows={3}
+                required
+                placeholder="Enter your reason"
+                value={myLeaveForm.customReason}
+                onChange={(e) => setMyLeaveForm({ ...myLeaveForm, customReason: e.target.value })}
+              />
+            </div>
+          )}
         </form>
       </Modal>
     </div>

@@ -144,14 +144,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
               <FileText size={18} />
               <span>Leave Records</span>
             </NavLink>
-            <NavLink
-              to="/teacher/marks"
-              onClick={handleLinkClick}
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-            >
-              <Award size={18} />
-              <span>Marks</span>
-            </NavLink>
           </>
         )}
 

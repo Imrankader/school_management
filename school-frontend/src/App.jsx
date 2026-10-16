@@ -117,7 +117,6 @@ export const App = () => {
               >
                 <Route index element={<TeacherDashboard />} />
                 <Route path="leave" element={<TeacherLeavePage />} />
-                <Route path="marks" element={<MarksPage />} />
               </Route>
 
               {/* Parent Protected Routes */}

@@ -32,6 +32,8 @@ import {
   Copy
 } from 'lucide-react';
 
+const STANDARD_BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
 export const StudentsPage = () => {
   // Navigation View: 'summary' (Class Student Summary) | 'class-details' (Selected Class Records)
   const [view, setView] = useState('summary');
@@ -90,6 +92,7 @@ export const StudentsPage = () => {
     password: ''
   });
 
+  const [manualBloodGroup, setManualBloodGroup] = useState(false);
   const [viewingStudent, setViewingStudent] = useState(null);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [sectionFilter, setSectionFilter] = useState('ALL');
@@ -443,6 +446,7 @@ export const StudentsPage = () => {
   const handleOpenAdd = (prefillClass = '') => {
     setEditingStudent(null);
     setShowModalPassword(false);
+    setManualBloodGroup(false);
     setFormData({
       admNo: '',
       name: '',
@@ -469,6 +473,7 @@ export const StudentsPage = () => {
   const handleOpenEdit = (student) => {
     setEditingStudent(student);
     setShowModalPassword(false);
+    setManualBloodGroup(Boolean(student.bloodGroup) && !STANDARD_BLOOD_GROUPS.includes(student.bloodGroup));
     setFormData({
       admNo: student.admissionNumber || '',
       name: student.name || '',
@@ -1920,8 +1925,16 @@ export const StudentsPage = () => {
               <label className="form-label">Blood Group</label>
               <select
                 className="form-input"
-                value={formData.bloodGroup}
-                onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
+                value={manualBloodGroup ? 'OTHER' : formData.bloodGroup}
+                onChange={(e) => {
+                  if (e.target.value === 'OTHER') {
+                    setManualBloodGroup(true);
+                    setFormData({ ...formData, bloodGroup: '' });
+                  } else {
+                    setManualBloodGroup(false);
+                    setFormData({ ...formData, bloodGroup: e.target.value });
+                  }
+                }}
               >
                 <option value="">Select blood group</option>
                 <option value="A+">A+</option>
@@ -1932,7 +1945,18 @@ export const StudentsPage = () => {
                 <option value="AB-">AB-</option>
                 <option value="O+">O+</option>
                 <option value="O-">O-</option>
+                <option value="OTHER">Other (specify)</option>
               </select>
+              {manualBloodGroup && (
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ marginTop: '0.5rem' }}
+                  placeholder="Enter blood group"
+                  value={formData.bloodGroup}
+                  onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
+                />
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">Joining Date</label>

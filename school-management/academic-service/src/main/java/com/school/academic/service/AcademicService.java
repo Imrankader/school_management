@@ -374,6 +374,11 @@ public class AcademicService {
         markRepository.deleteById(id);
     }
 
+    @Transactional
+    public long deleteMarksByStudent(Long studentId) {
+        return markRepository.deleteByStudentId(studentId);
+    }
+
     public com.school.academic.dto.MarkDTO toMarkDTO(Mark mark) {
         return com.school.academic.dto.MarkDTO.builder()
                 .id(mark.getId())

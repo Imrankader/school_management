@@ -14,6 +14,8 @@ public interface MarkRepository extends JpaRepository<Mark, Long> {
 
     List<Mark> findByStudentId(Long studentId);
 
+    long deleteByStudentId(Long studentId);
+
     List<Mark> findByExamId(Long examId);
 
     Optional<Mark> findFirstByStudentIdAndSubjectNameIgnoreCaseAndExamNameIgnoreCase(

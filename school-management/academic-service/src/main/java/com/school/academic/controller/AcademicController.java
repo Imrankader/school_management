@@ -239,6 +239,15 @@ public class AcademicController {
         return ResponseEntity.ok(ApiResponse.success("Mark deleted", null));
     }
 
+    @DeleteMapping("/marks/student/{studentId}")
+    public ResponseEntity<ApiResponse<Void>> deleteMarksByStudent(
+            @PathVariable("studentId") Long studentId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyAdminRole(authHeader);
+        academicService.deleteMarksByStudent(studentId);
+        return ResponseEntity.ok(ApiResponse.success("Marks deleted for student", null));
+    }
+
     @PostMapping("/marks/batch")
     public ResponseEntity<ApiResponse<List<MarkDTO>>> saveBatchMarks(
             @RequestBody MarkBatchRequest request,

@@ -27,6 +27,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 public class StudentService {
 
     private final StudentRepository studentRepository;
+    private final AcademicServiceClient academicServiceClient;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public Page<StudentDTO> searchStudents(String search, String className, String status, Pageable pageable) {
@@ -254,6 +255,7 @@ public class StudentService {
             throw new ResourceNotFoundException("Student", "id", id);
         }
         studentRepository.deleteById(id);
+        academicServiceClient.deleteMarksForStudent(id);
         log.info("Deleted student id: {}", id);
     }
 
