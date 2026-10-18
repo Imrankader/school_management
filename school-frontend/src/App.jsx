@@ -42,6 +42,7 @@ const LeaveRequestsPage = lazyPage(() => import('./pages/admin/LeaveRequestsPage
 const LeaveReasonsPage = lazyPage(() => import('./pages/admin/LeaveReasonsPage'), 'LeaveReasonsPage');
 const ImportExportPage = lazyPage(() => import('./pages/admin/ImportExportPage'), 'ImportExportPage');
 const NotificationsPage = lazyPage(() => import('./pages/admin/NotificationsPage'), 'NotificationsPage');
+const ModuleAccessPage = lazyPage(() => import('./pages/admin/ModuleAccessPage'), 'ModuleAccessPage');
 const TeacherDashboard = lazyPage(() => import('./pages/teacher/TeacherDashboard'), 'TeacherDashboard');
 const TeacherLeavePage = lazyPage(() => import('./pages/teacher/TeacherLeavePage'), 'TeacherLeavePage');
 const ParentDashboard = lazyPage(() => import('./pages/parent/ParentDashboard'), 'ParentDashboard');
@@ -104,6 +105,7 @@ export const App = () => {
                 <Route path="leave-reasons" element={<LeaveReasonsPage />} />
                 <Route path="import-export" element={<ImportExportPage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
+                <Route path="module-access" element={<ModuleAccessPage />} />
               </Route>
 
               {/* Teacher Protected Routes */}

@@ -7,6 +7,7 @@ import { leaveService } from '../../services/leaveService';
 import { notificationService } from '../../services/notificationService';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useFeatureToggles } from '../../hooks/useFeatureToggles';
 import { Modal } from '../../components/common/Modal';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import {
@@ -73,6 +74,16 @@ export const TeacherDashboard = () => {
 
   const { addToast } = useToast();
   const { user } = useAuth();
+  const { isEnabled, loading: togglesLoading } = useFeatureToggles('TEACHER');
+
+  // If the current tab gets disabled (or the default 'homework' tab is disabled for this
+  // teacher), fall back to the first module that's actually enabled.
+  useEffect(() => {
+    if (togglesLoading) return;
+    if (isEnabled(activeTab.toUpperCase())) return;
+    const fallback = ['homework', 'leave', 'holidays', 'notifications'].find((t) => isEnabled(t.toUpperCase()));
+    if (fallback) setActiveTab(fallback);
+  }, [togglesLoading, isEnabled, activeTab]);
 
   useEffect(() => {
     loadInitialData();
@@ -234,37 +245,45 @@ export const TeacherDashboard = () => {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem', flexWrap: 'wrap' }}>
-        <button
-          onClick={() => setActiveTab('homework')}
-          className={`btn btn-sm ${activeTab === 'homework' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          <BookOpen size={16} /> Homework ({homeworkList.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('leave')}
-          className={`btn btn-sm ${activeTab === 'leave' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          <FileText size={16} /> Leave Requests ({leaveRequests.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('holidays')}
-          className={`btn btn-sm ${activeTab === 'holidays' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          <Sun size={16} /> Holidays Calendar ({holidays.length})
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('notifications');
-            if (notifications.length === 0) loadNotifications();
-          }}
-          className={`btn btn-sm ${activeTab === 'notifications' ? 'btn-primary' : 'btn-secondary'}`}
-        >
-          <Bell size={16} /> Announcements
-        </button>
+        {isEnabled('HOMEWORK') && (
+          <button
+            onClick={() => setActiveTab('homework')}
+            className={`btn btn-sm ${activeTab === 'homework' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <BookOpen size={16} /> Homework ({homeworkList.length})
+          </button>
+        )}
+        {isEnabled('LEAVE') && (
+          <button
+            onClick={() => setActiveTab('leave')}
+            className={`btn btn-sm ${activeTab === 'leave' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <FileText size={16} /> Leave Requests ({leaveRequests.length})
+          </button>
+        )}
+        {isEnabled('HOLIDAYS') && (
+          <button
+            onClick={() => setActiveTab('holidays')}
+            className={`btn btn-sm ${activeTab === 'holidays' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <Sun size={16} /> Holidays Calendar ({holidays.length})
+          </button>
+        )}
+        {isEnabled('NOTIFICATIONS') && (
+          <button
+            onClick={() => {
+              setActiveTab('notifications');
+              if (notifications.length === 0) loadNotifications();
+            }}
+            className={`btn btn-sm ${activeTab === 'notifications' ? 'btn-primary' : 'btn-secondary'}`}
+          >
+            <Bell size={16} /> Announcements
+          </button>
+        )}
       </div>
 
       {/* Tab 1: Homework */}
-      {activeTab === 'homework' && (
+      {activeTab === 'homework' && isEnabled('HOMEWORK') && (
         <div className="card">
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}>
@@ -322,7 +341,7 @@ export const TeacherDashboard = () => {
       )}
 
       {/* Tab 2: Leave Requests */}
-      {activeTab === 'leave' && (
+      {activeTab === 'leave' && isEnabled('LEAVE') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div className="card">
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -446,7 +465,7 @@ export const TeacherDashboard = () => {
       )}
 
       {/* Tab 3: Holidays */}
-      {activeTab === 'holidays' && (
+      {activeTab === 'holidays' && isEnabled('HOLIDAYS') && (
         <div className="card">
           <div className="card-header">
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}>
@@ -487,7 +506,7 @@ export const TeacherDashboard = () => {
       )}
 
       {/* Tab 4: Notifications */}
-      {activeTab === 'notifications' && (
+      {activeTab === 'notifications' && isEnabled('NOTIFICATIONS') && (
         <div className="card">
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}>

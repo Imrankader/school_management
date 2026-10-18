@@ -56,4 +56,19 @@ export const authService = {
     const response = await api.put(`/api/auth/users/${userId}/password`, { newPassword });
     return response.data;
   },
+
+  getFeatureToggles: async (role) => {
+    const response = await api.get('/api/auth/feature-toggles', { params: { role } });
+    return response.data;
+  },
+
+  getAllFeatureToggles: async () => {
+    const response = await api.get('/api/auth/feature-toggles/all');
+    return response.data;
+  },
+
+  setFeatureToggle: async (role, moduleKey, enabled) => {
+    const response = await api.put('/api/auth/feature-toggles', { role, moduleKey, enabled });
+    return response.data;
+  },
 };

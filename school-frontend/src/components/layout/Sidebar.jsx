@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useFeatureToggles } from '../../hooks/useFeatureToggles';
 import { Logo } from '../common/Logo';
 import {
   LayoutDashboard,
@@ -12,11 +13,13 @@ import {
   Bell,
   BookMarked,
   KeyRound,
+  ShieldCheck,
   X
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout, isAdmin, isTeacher, isParent } = useAuth();
+  const { isEnabled: isTeacherModuleEnabled } = useFeatureToggles(isTeacher ? 'TEACHER' : null);
 
   const handleLinkClick = () => {
     if (onClose && window.innerWidth <= 768) {
@@ -121,6 +124,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
               <KeyRound size={18} />
               <span>Staff Accounts</span>
             </NavLink>
+            <NavLink
+              to="/admin/module-access"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <ShieldCheck size={18} />
+              <span>Module Access</span>
+            </NavLink>
           </>
         )}
 
@@ -136,14 +147,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
               <LayoutDashboard size={18} />
               <span>Dashboard & Homework</span>
             </NavLink>
-            <NavLink
-              to="/teacher/leave"
-              onClick={handleLinkClick}
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-            >
-              <FileText size={18} />
-              <span>Leave Records</span>
-            </NavLink>
+            {isTeacherModuleEnabled('LEAVE') && (
+              <NavLink
+                to="/teacher/leave"
+                onClick={handleLinkClick}
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              >
+                <FileText size={18} />
+                <span>Leave Records</span>
+              </NavLink>
+            )}
           </>
         )}
 

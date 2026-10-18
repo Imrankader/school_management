@@ -7,6 +7,7 @@ import { academicService } from '../../services/academicService';
 import { leaveService } from '../../services/leaveService';
 import { notificationService } from '../../services/notificationService';
 import { homeworkService } from '../../services/homeworkService';
+import { useFeatureToggles } from '../../hooks/useFeatureToggles';
 import {
   User,
   DollarSign,
@@ -48,6 +49,7 @@ const getUrgency = (dueDate) => {
 export const ParentDashboard = () => {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { isEnabled, loading: togglesLoading } = useFeatureToggles('PARENT');
 
   const [activeTab, setActiveTab] = useState('overview');
   const [child, setChild] = useState(null);
@@ -73,6 +75,13 @@ export const ParentDashboard = () => {
       setLoading(false);
     }
   }, [studentId]);
+
+  // 'overview' is always available (it's the home tab); fall back to it if the
+  // current tab gets disabled by the admin.
+  useEffect(() => {
+    if (togglesLoading || activeTab === 'overview') return;
+    if (!isEnabled(activeTab.toUpperCase())) setActiveTab('overview');
+  }, [togglesLoading, isEnabled, activeTab]);
 
   const loadAllData = async () => {
     setLoading(true);
@@ -239,7 +248,7 @@ export const ParentDashboard = () => {
 
       {/* Navigation Tabs */}
       <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)' }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {TABS.filter(({ id }) => id === 'overview' || isEnabled(id.toUpperCase())).map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
@@ -511,7 +520,7 @@ export const ParentDashboard = () => {
       {/* ========================================================================= */}
       {/* TAB: HOMEWORK */}
       {/* ========================================================================= */}
-      {activeTab === 'homework' && (
+      {activeTab === 'homework' && isEnabled('HOMEWORK') && (
         <div className="card">
           <div className="card-header">
             <div>
@@ -571,7 +580,7 @@ export const ParentDashboard = () => {
       {/* ========================================================================= */}
       {/* TAB 2: FEES */}
       {/* ========================================================================= */}
-      {activeTab === 'fees' && (
+      {activeTab === 'fees' && isEnabled('FEES') && (
         <div className="card">
           <div className="card-header">
             <div>
@@ -635,7 +644,7 @@ export const ParentDashboard = () => {
       {/* ========================================================================= */}
       {/* TAB 3: MARKS */}
       {/* ========================================================================= */}
-      {activeTab === 'marks' && (
+      {activeTab === 'marks' && isEnabled('MARKS') && (
         <div className="card">
           <div className="card-header">
             <div>
@@ -702,7 +711,7 @@ export const ParentDashboard = () => {
       {/* ========================================================================= */}
       {/* TAB 4: LEAVE */}
       {/* ========================================================================= */}
-      {activeTab === 'leave' && (
+      {activeTab === 'leave' && isEnabled('LEAVE') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Submit Leave Request Card */}
           <div className="card">
@@ -831,7 +840,7 @@ export const ParentDashboard = () => {
       {/* ========================================================================= */}
       {/* TAB 5: NOTIFICATIONS */}
       {/* ========================================================================= */}
-      {activeTab === 'notifications' && (
+      {activeTab === 'notifications' && isEnabled('NOTIFICATIONS') && (
         <div className="card">
           <div className="card-header">
             <div>

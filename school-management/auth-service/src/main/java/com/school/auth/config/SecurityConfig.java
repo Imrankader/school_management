@@ -39,6 +39,8 @@ public class SecurityConfig {
                     .requestMatchers("/api/auth/staff", "/api/auth/staff/**").hasRole("ADMIN")
                     .requestMatchers("/api/auth/users/**").hasRole("ADMIN")
                     .requestMatchers("/api/auth/audit-log", "/api/auth/audit-log/**").hasRole("ADMIN")
+                    .requestMatchers("/api/auth/feature-toggles/all").hasRole("ADMIN")
+                    .requestMatchers(HttpMethod.PUT, "/api/auth/feature-toggles").hasRole("ADMIN")
                     .requestMatchers("/actuator/**").permitAll()
                     .anyRequest().authenticated()
             )

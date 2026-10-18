@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { leaveService } from '../../services/leaveService';
 import { useToast } from '../../context/ToastContext';
+import { useFeatureToggles } from '../../hooks/useFeatureToggles';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { toDisplayClassName } from '../../utils/academicClassOrder';
 import { FileText, Search, RefreshCw, AlertCircle } from 'lucide-react';
@@ -21,6 +22,7 @@ export const TeacherLeavePage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { addToast } = useToast();
+  const { isEnabled, loading: togglesLoading } = useFeatureToggles('TEACHER');
 
   useEffect(() => {
     loadTeacherLeaves();
@@ -83,6 +85,18 @@ export const TeacherLeavePage = () => {
       recordId.includes(term)
     );
   });
+
+  if (!togglesLoading && !isEnabled('LEAVE')) {
+    return (
+      <div>
+        <Breadcrumb items={[{ label: 'Leave Records' }]} />
+        <div className="card" style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <AlertCircle size={28} style={{ marginBottom: '0.75rem' }} />
+          <p>This module has been disabled by the administrator.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
