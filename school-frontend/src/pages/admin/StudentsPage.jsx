@@ -42,13 +42,14 @@ export const StudentsPage = () => {
   // Class Summary State
   const [classSummaries, setClassSummaries] = useState([]);
   const [loadingSummaries, setLoadingSummaries] = useState(false);
-  const [clearingData, setClearingData] = useState(false);
 
   // Master Search State (Search across all students by Name, Roll No, Admission No, Phone Number)
   const [masterSearch, setMasterSearch] = useState('');
   const [masterStudents, setMasterStudents] = useState([]);
   const [loadingMasterSearch, setLoadingMasterSearch] = useState(false);
   const [masterPagination, setMasterPagination] = useState({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
+  const [masterClassFilter, setMasterClassFilter] = useState('');
+  const [masterSectionFilter, setMasterSectionFilter] = useState('');
 
   // Class-Specific Students State
   const [students, setStudents] = useState([]);
@@ -232,10 +233,12 @@ export const StudentsPage = () => {
     });
   }, [students, classSearch, selectedClass]);
 
-  // Master Search effect: Debounced search across all students in school
+  // Master Search effect: Debounced search across all students in school, optionally
+  // narrowed by Class/Section even without typing a name/admission number.
   useEffect(() => {
     if (view === 'summary') {
-      if (!masterSearch || !masterSearch.trim()) {
+      const hasQuery = masterSearch && masterSearch.trim();
+      if (!hasQuery && !masterClassFilter) {
         setMasterStudents([]);
         setLoadingMasterSearch(false);
         return;
@@ -245,10 +248,11 @@ export const StudentsPage = () => {
       }, 250);
       return () => clearTimeout(timer);
     }
-  }, [masterSearch, view]);
+  }, [masterSearch, masterClassFilter, masterSectionFilter, view]);
 
   const handleMasterSearch = async (query, page = 1) => {
-    if (!query || !query.trim()) {
+    const trimmedQuery = (query || '').trim();
+    if (!trimmedQuery && !masterClassFilter) {
       setMasterStudents([]);
       setLoadingMasterSearch(false);
       return;
@@ -256,7 +260,8 @@ export const StudentsPage = () => {
     try {
       setLoadingMasterSearch(true);
       const res = await studentService.getAllStudents({
-        search: query.trim(),
+        search: trimmedQuery || undefined,
+        className: masterClassFilter || undefined,
         page,
         pageSize: 50,
       });
@@ -280,11 +285,19 @@ export const StudentsPage = () => {
 
   // Instant client-side multi-field filter on master search results
   const filteredMasterStudents = useMemo(() => {
-    if (!masterSearch || !masterSearch.trim()) return [];
+    const hasQuery = masterSearch && masterSearch.trim();
+    if (!hasQuery && !masterClassFilter) return [];
+
+    const bySection = masterSectionFilter.trim()
+      ? masterStudents.filter((s) => (s.section || '').toLowerCase() === masterSectionFilter.trim().toLowerCase())
+      : masterStudents;
+
+    if (!hasQuery) return bySection;
+
     const q = masterSearch.trim().toLowerCase();
     const rawDigits = q.replace(/\D/g, '');
 
-    return masterStudents.filter((s) => {
+    return bySection.filter((s) => {
       const name = (s.name || '').toLowerCase();
       const adm = (s.admissionNumber || '').toLowerCase();
       const roll = (s.rollNumber || '').toLowerCase();
@@ -312,7 +325,9 @@ export const StudentsPage = () => {
 
       return textMatch || phoneMatch;
     });
-  }, [masterStudents, masterSearch]);
+  }, [masterStudents, masterSearch, masterClassFilter, masterSectionFilter]);
+
+  const isMasterSearchActive = Boolean((masterSearch && masterSearch.trim()) || masterClassFilter);
 
   const matchingClasses = useMemo(() => {
     if (!masterSearch || !masterSearch.trim()) return [];
@@ -347,37 +362,6 @@ export const StudentsPage = () => {
       addToast('Failed to load class student summaries', 'error');
     } finally {
       setLoadingSummaries(false);
-    }
-  };
-
-  // Permanently deletes every student record in the school. No undo.
-  const handleClearAllData = async () => {
-    if (totalStudents === 0) {
-      addToast('There are no students to clear.', 'info');
-      return;
-    }
-    const firstConfirm = window.confirm(
-      `Are you sure you want to clear ALL student data? This will permanently delete all ${totalStudents} student records across every class.`
-    );
-    if (!firstConfirm) return;
-
-    const secondConfirm = window.confirm(
-      `This cannot be undone. ${totalStudents} student records will be permanently removed right now. Click OK to proceed.`
-    );
-    if (!secondConfirm) return;
-
-    try {
-      setClearingData(true);
-      const res = await studentService.clearAllStudents();
-      const deletedCount = res?.data?.deletedCount ?? totalStudents;
-      addToast(`Cleared ${deletedCount} student record(s).`, 'success');
-      await loadClassSummaries();
-      setMasterStudents([]);
-      setMasterSearch('');
-    } catch (err) {
-      addToast(err.response?.data?.message || 'Failed to clear student data', 'error');
-    } finally {
-      setClearingData(false);
     }
   };
 
@@ -702,17 +686,6 @@ export const StudentsPage = () => {
                 Add Student
               </button>
 
-              <button
-                type="button"
-                className="btn btn-danger"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.5rem 0.9rem', fontWeight: 600 }}
-                onClick={handleClearAllData}
-                disabled={clearingData}
-                title="Permanently delete every student record"
-              >
-                <Trash2 size={15} />
-                {clearingData ? 'Clearing...' : 'Clear Data'}
-              </button>
             </div>
           </div>
 
@@ -788,7 +761,7 @@ export const StudentsPage = () => {
               <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main, #0f172a)' }}>
                 Classes Overview
               </span>
-              {masterSearch && (
+              {isMasterSearchActive && (
                 <span
                   style={{
                     backgroundColor: '#eef2ff',
@@ -859,12 +832,33 @@ export const StudentsPage = () => {
                 </button>
               )}
             </div>
+
+            {/* Class / Section Filter */}
+            <select
+              className="form-select"
+              value={masterClassFilter}
+              onChange={(e) => setMasterClassFilter(e.target.value)}
+              style={{ height: '36px', fontSize: '0.825rem', minWidth: '140px' }}
+            >
+              <option value="">All Classes</option>
+              {CLASS_CONFIG.map((c) => (
+                <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Section"
+              className="form-input"
+              value={masterSectionFilter}
+              onChange={(e) => setMasterSectionFilter(e.target.value)}
+              style={{ height: '36px', fontSize: '0.825rem', width: '100px' }}
+            />
           </div>
 
           {/* ========================================================================= */}
-          {/* 1A. MASTER SEARCH RESULTS (Shown when masterSearch query is active)       */}
+          {/* 1A. MASTER SEARCH RESULTS (Shown when masterSearch query or filter is active) */}
           {/* ========================================================================= */}
-          {masterSearch && masterSearch.trim() ? (
+          {isMasterSearchActive ? (
             <div
               className="card"
               style={{

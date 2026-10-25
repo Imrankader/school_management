@@ -1,5 +1,6 @@
 package com.school.notification.service;
 
+import com.school.common.exception.ResourceNotFoundException;
 import com.school.notification.dto.NotificationDTO;
 import com.school.notification.entity.Notification;
 import com.school.notification.repository.NotificationRepository;
@@ -49,6 +50,16 @@ public class NotificationService {
 
         Notification saved = notificationRepository.save(notification);
         log.info("Notification sent to {}: {}", normalizedAudience, dto.getMessage());
+        return toDTO(saved);
+    }
+
+    /** Admin edits the message of a previously sent notification. */
+    public NotificationDTO updateMessage(Long id, String newMessage) {
+        Notification notification = notificationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification", "id", id));
+        notification.setMessage(newMessage);
+        Notification saved = notificationRepository.save(notification);
+        log.info("Notification {} message edited", id);
         return toDTO(saved);
     }
 

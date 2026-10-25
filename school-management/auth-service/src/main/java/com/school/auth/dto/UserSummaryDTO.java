@@ -21,4 +21,5 @@ public class UserSummaryDTO {
     private String role;
     private String assignedClass;
     private String assignedSection;
+    private java.time.LocalDate dateOfBirth;
 }

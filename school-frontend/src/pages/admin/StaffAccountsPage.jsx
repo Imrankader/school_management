@@ -6,7 +6,7 @@ import { Breadcrumb } from '../../components/common/Breadcrumb';
 import { CLASS_CONFIG, toDisplayClassName } from '../../utils/academicClassOrder';
 import { ShieldCheck, Search, Mail, KeyRound, GraduationCap, UserPlus, Trash2, AlertCircle, History } from 'lucide-react';
 
-const EMPTY_ADD_FORM = { name: '', email: '', password: '', role: 'TEACHER', assignedClass: '', assignedSection: '' };
+const EMPTY_ADD_FORM = { name: '', email: '', password: '', role: 'TEACHER', assignedClass: '', assignedSection: '', dateOfBirth: '' };
 
 export const StaffAccountsPage = () => {
   const [staff, setStaff] = useState([]);
@@ -129,6 +129,7 @@ export const StaffAccountsPage = () => {
         role: addForm.role,
         assignedClass: addForm.role === 'TEACHER' ? (addForm.assignedClass || null) : null,
         assignedSection: addForm.role === 'TEACHER' ? (addForm.assignedSection.trim() || null) : null,
+        dateOfBirth: addForm.dateOfBirth || null,
       });
       addToast(`${addForm.role === 'ADMIN' ? 'Administrator' : 'Teacher'} account created for ${addForm.name.trim()}.`, 'success');
       setAddModalOpen(false);
@@ -348,6 +349,16 @@ export const StaffAccountsPage = () => {
               placeholder="At least 4 characters"
               value={addForm.password}
               onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Date of Birth (optional)</label>
+            <input
+              type="date"
+              className="form-input"
+              value={addForm.dateOfBirth}
+              onChange={(e) => setAddForm({ ...addForm, dateOfBirth: e.target.value })}
             />
           </div>
 

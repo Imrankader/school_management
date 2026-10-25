@@ -4,6 +4,8 @@ import com.school.common.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
+
 /**
  * User entity representing system users (Admin, Teacher, Parent).
  * For PARENT role, studentId holds the ID of the student in student-service.
@@ -52,4 +54,11 @@ public class User {
      */
     @Column(name = "assigned_section")
     private String assignedSection;
+
+    /**
+     * For TEACHER (and optionally ADMIN) accounts: used to show upcoming birthdays on the
+     * admin dashboard. Not collected for PARENT accounts (the student's own DOB is used instead).
+     */
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
 }

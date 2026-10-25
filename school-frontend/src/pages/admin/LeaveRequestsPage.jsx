@@ -118,7 +118,8 @@ export const LeaveRequestsPage = () => {
           (s.admissionNumber || '').toLowerCase().includes(term) ||
           (s.className || '').toLowerCase().includes(term))
       : allStudents;
-    return list.slice(0, 50);
+    const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return sorted.slice(0, 50);
   }, [studentQuery, allStudents]);
 
   const selectedStudent = markForm.studentId ? studentsMap[markForm.studentId] : null;

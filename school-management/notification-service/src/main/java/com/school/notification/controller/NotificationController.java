@@ -55,6 +55,30 @@ public class NotificationController {
                 .body(ApiResponse.success("Notification sent", sent));
     }
 
+    /** PUT /api/notifications/{id} — Admin edits the message of a previously sent notification. */
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<NotificationDTO>> updateNotification(
+            @PathVariable("id") Long id,
+            @RequestBody java.util.Map<String, String> body,
+            HttpServletRequest request) {
+        String token = jwtDecoder.extractRaw(request.getHeader("Authorization"));
+        if (token == null || !jwtDecoder.isValidToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Invalid or expired authentication token"));
+        }
+        String role = jwtDecoder.getRole(token);
+        if (!"ADMIN".equals(role)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Only ADMIN can edit notifications"));
+        }
+        String newMessage = body.get("message");
+        if (newMessage == null || newMessage.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Message is required"));
+        }
+        NotificationDTO updated = notificationService.updateMessage(id, newMessage.trim());
+        return ResponseEntity.ok(ApiResponse.success("Notification updated", updated));
+    }
+
     /** GET /api/notifications/history — Admin views all notification history */
     @GetMapping("/history")
     public ResponseEntity<ApiResponse<List<NotificationDTO>>> getHistory(HttpServletRequest request) {

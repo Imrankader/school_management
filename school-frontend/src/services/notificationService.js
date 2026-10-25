@@ -19,4 +19,10 @@ export const notificationService = {
     const response = await api.get('/api/notifications/my');
     return response.data;
   },
+
+  /** Admin: Edit the message of a previously sent notification */
+  updateNotification: async (id, message) => {
+    const response = await api.put(`/api/notifications/${id}`, { message });
+    return response.data;
+  },
 };

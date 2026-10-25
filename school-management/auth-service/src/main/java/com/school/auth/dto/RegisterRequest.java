@@ -38,4 +38,7 @@ public class RegisterRequest {
      */
     private String assignedClass;
     private String assignedSection;
+
+    /** Optional: for TEACHER (and ADMIN) accounts, used for the upcoming-birthdays dashboard card. */
+    private java.time.LocalDate dateOfBirth;
 }

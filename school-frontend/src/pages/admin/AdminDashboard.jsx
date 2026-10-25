@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { studentService } from '../../services/studentService';
 import { academicService } from '../../services/academicService';
 import { leaveService } from '../../services/leaveService';
 import { feeService } from '../../services/feeService';
+import { authService } from '../../services/authService';
 import {
   Users,
   CalendarCheck,
@@ -19,18 +21,35 @@ import {
   CheckCircle2,
   Calendar,
   Clock,
+  Cake,
+  GraduationCap,
+  Trash2,
 } from 'lucide-react';
+
+// Days until this person's next birthday (0 = today), or null if no DOB on record.
+const daysUntilNextBirthday = (dobStr) => {
+  if (!dobStr) return null;
+  const dob = new Date(dobStr);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let next = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+  if (next < today) next = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+  return Math.round((next - today) / 86400000);
+};
 
 export const AdminDashboard = () => {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const [stats, setStats] = useState({
     studentsCount: 0,
     pendingLeaves: 0,
   });
   const [upcomingExams, setUpcomingExams] = useState([]);
   const [feeSummary, setFeeSummary] = useState({ totalBilled: 0, totalPaid: 0, totalOutstanding: 0 });
-  const [recentLeaves, setRecentLeaves] = useState([]);
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [clearingData, setClearingData] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -46,12 +65,14 @@ export const AdminDashboard = () => {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const [studentsRes, leavesRes, teacherLeavesRes, examsRes, feesRes] = await Promise.allSettled([
+      const [studentsRes, leavesRes, teacherLeavesRes, examsRes, feesRes, birthdayStudentsRes, staffRes] = await Promise.allSettled([
         studentService.getAllStudents({ page: 1, pageSize: 1 }),
         leaveService.getAll(),
         leaveService.getAllTeacherLeave(),
         academicService.getAllExams(),
         feeService.getClassBillingSummary(),
+        studentService.getAllStudents({ page: 1, pageSize: 10000, status: 'Active' }),
+        authService.getStaffAccounts(),
       ]);
 
       // Extract Students
@@ -82,12 +103,6 @@ export const AdminDashboard = () => {
         teacherLeavesList = Array.isArray(val) ? val : (val.data || []);
       }
 
-      // Combine both kinds of leave into one "recent activity" feed, most recent first
-      const combinedLeaves = [
-        ...leavesList.map((lv) => ({ ...lv, leaveKind: 'student' })),
-        ...teacherLeavesList.map((lv) => ({ ...lv, leaveKind: 'teacher' })),
-      ].sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0));
-
       // Extract Exams
       let examsList = [];
       if (examsRes.status === 'fulfilled' && examsRes.value) {
@@ -108,6 +123,25 @@ export const AdminDashboard = () => {
         });
       }
 
+      // Upcoming Birthdays (students + teachers, next 30 days, soonest first)
+      let birthdayStudentsList = [];
+      if (birthdayStudentsRes.status === 'fulfilled' && birthdayStudentsRes.value) {
+        const val = birthdayStudentsRes.value;
+        birthdayStudentsList = val.data?.data || (Array.isArray(val.data) ? val.data : []);
+      }
+      let staffList = [];
+      if (staffRes.status === 'fulfilled' && staffRes.value) {
+        const val = staffRes.value;
+        staffList = val.success && val.data ? val.data : [];
+      }
+      const birthdayPeople = [
+        ...birthdayStudentsList.map((s) => ({ name: s.name, kind: 'student', dob: s.dateOfBirth, meta: s.className ? `${s.className}${s.section ? ` (${s.section})` : ''}` : '' })),
+        ...staffList.filter((s) => s.role === 'TEACHER').map((s) => ({ name: s.name, kind: 'teacher', dob: s.dateOfBirth, meta: 'Teacher' })),
+      ]
+        .map((p) => ({ ...p, daysUntil: daysUntilNextBirthday(p.dob) }))
+        .filter((p) => p.daysUntil !== null && p.daysUntil <= 30)
+        .sort((a, b) => a.daysUntil - b.daysUntil || (a.name || '').localeCompare(b.name || ''));
+
       setStats({
         studentsCount: totalStudentsCount || studentsList.length,
         pendingLeaves: leavesList.length + teacherLeavesList.length,
@@ -115,11 +149,40 @@ export const AdminDashboard = () => {
 
       setUpcomingExams(examsList.slice(0, 4));
       setFeeSummary({ totalBilled: billed, totalPaid: paid, totalOutstanding: outstanding });
-      setRecentLeaves(combinedLeaves.slice(0, 4));
+      setUpcomingBirthdays(birthdayPeople.slice(0, 8));
     } catch (err) {
       console.error('Error fetching dashboard stats', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Permanently deletes every student record in the school. No undo.
+  const handleClearAllData = async () => {
+    if (stats.studentsCount === 0) {
+      addToast('There are no students to clear.', 'info');
+      return;
+    }
+    const firstConfirm = window.confirm(
+      `Are you sure you want to clear ALL student data? This will permanently delete all ${stats.studentsCount} student records across every class.`
+    );
+    if (!firstConfirm) return;
+
+    const secondConfirm = window.confirm(
+      `This cannot be undone. ${stats.studentsCount} student records will be permanently removed right now. Click OK to proceed.`
+    );
+    if (!secondConfirm) return;
+
+    try {
+      setClearingData(true);
+      const res = await studentService.clearAllStudents();
+      const deletedCount = res?.data?.deletedCount ?? stats.studentsCount;
+      addToast(`Cleared ${deletedCount} student record(s).`, 'success');
+      await loadDashboardData();
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to clear student data', 'error');
+    } finally {
+      setClearingData(false);
     }
   };
 
@@ -149,6 +212,15 @@ export const AdminDashboard = () => {
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
+          </button>
+          <button
+            onClick={handleClearAllData}
+            disabled={clearingData}
+            className="btn btn-danger btn-sm"
+            title="Permanently delete every student record"
+          >
+            <Trash2 size={13} />
+            <span>{clearingData ? 'Clearing...' : 'Clear Data'}</span>
           </button>
         </div>
       </div>
@@ -464,32 +536,28 @@ export const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Recent Leave Requests */}
+        {/* Upcoming Birthdays */}
         <div className="card">
           <div className="card-header">
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.95rem' }}>
-              <FileText size={16} color="var(--warning)" />
-              Recent Leave Submissions
+              <Cake size={16} color="var(--warning)" />
+              Upcoming Birthdays
             </h3>
-            <Link to="/admin/leave" style={{ fontSize: '0.75rem', color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
-              All Records
-            </Link>
+            <span className="badge badge-secondary" style={{ fontSize: '0.7rem' }}>Next 30 days</span>
           </div>
           <div style={{ padding: '0.75rem 1.25rem' }}>
-            {recentLeaves.length === 0 ? (
+            {upcomingBirthdays.length === 0 ? (
               <div style={{ padding: '1rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
-                No recent leave applications.
+                No birthdays in the next 30 days.
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {recentLeaves.map((lv) => {
-                  const isTeacher = lv.leaveKind === 'teacher';
-                  const name = isTeacher
-                    ? (lv.teacherName || `Teacher #${lv.teacherId}`)
-                    : (lv.studentName || `Student #${lv.studentId}`);
+                {upcomingBirthdays.map((p, idx) => {
+                  const isTeacher = p.kind === 'teacher';
+                  const when = p.daysUntil === 0 ? 'Today' : p.daysUntil === 1 ? 'Tomorrow' : `In ${p.daysUntil} days`;
                   return (
                     <div
-                      key={`${lv.leaveKind}-${lv.id}`}
+                      key={`${p.kind}-${p.name}-${idx}`}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -500,17 +568,18 @@ export const AdminDashboard = () => {
                     >
                       <div>
                         <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          {name}
+                          {isTeacher ? <GraduationCap size={13} color="var(--primary)" /> : <Users size={13} color="var(--text-muted)" />}
+                          {p.name}
                           <span className={`badge ${isTeacher ? 'badge-primary' : 'badge-secondary'}`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem' }}>
                             {isTeacher ? 'Teacher' : 'Student'}
                           </span>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {lv.reason || 'Leave requested'} • {lv.leaveDate || lv.startDate || 'Date not specified'}
+                          {p.meta}
                         </div>
                       </div>
-                      <span className="badge badge-secondary" style={{ fontSize: '0.7rem' }}>
-                        {lv.status || 'RECORDED'}
+                      <span className={`badge ${p.daysUntil === 0 ? 'badge-success' : 'badge-secondary'}`} style={{ fontSize: '0.7rem' }}>
+                        {when}
                       </span>
                     </div>
                   );

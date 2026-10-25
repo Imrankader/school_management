@@ -72,6 +72,7 @@ public class UserService {
                 .studentId(request.getRole() == Role.PARENT ? request.getStudentId() : null)
                 .assignedClass(request.getRole() == Role.TEACHER ? request.getAssignedClass() : null)
                 .assignedSection(request.getRole() == Role.TEACHER ? request.getAssignedSection() : null)
+                .dateOfBirth(request.getRole() != Role.PARENT ? request.getDateOfBirth() : null)
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -270,6 +271,7 @@ public class UserService {
                         .role(u.getRole().name())
                         .assignedClass(u.getAssignedClass())
                         .assignedSection(u.getAssignedSection())
+                        .dateOfBirth(u.getDateOfBirth())
                         .build())
                 .sorted(java.util.Comparator.comparing(UserSummaryDTO::getRole).thenComparing(UserSummaryDTO::getName))
                 .toList();

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { notificationService } from '../../services/notificationService';
 import { useToast } from '../../context/ToastContext';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
-import { Bell, Send, Calendar, Users, CheckCircle2, RefreshCw, Plus } from 'lucide-react';
+import { Bell, Send, Calendar, Users, CheckCircle2, RefreshCw, Plus, Edit2 } from 'lucide-react';
+import { Modal } from '../../components/common/Modal';
 
 export const NotificationsPage = () => {
   // Form state
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [audience, setAudience] = useState('STUDENTS');
+  const [targetStudents, setTargetStudents] = useState(true);
+  const [targetTeachers, setTargetTeachers] = useState(false);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [showForm, setShowForm] = useState(true);
@@ -15,6 +17,11 @@ export const NotificationsPage = () => {
   // History state
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Edit state
+  const [editingNotification, setEditingNotification] = useState(null);
+  const [editMessage, setEditMessage] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const { addToast } = useToast();
 
@@ -28,6 +35,11 @@ export const NotificationsPage = () => {
       addToast('Please enter a notification message', 'warning');
       return;
     }
+    if (!targetStudents && !targetTeachers) {
+      addToast('Select at least one target audience', 'warning');
+      return;
+    }
+    const audience = targetStudents && targetTeachers ? 'BOTH' : targetStudents ? 'STUDENTS' : 'TEACHERS';
 
     try {
       setSending(true);
@@ -39,6 +51,30 @@ export const NotificationsPage = () => {
       addToast(err.response?.data?.message || 'Failed to send notification', 'error');
     } finally {
       setSending(false);
+    }
+  };
+
+  const openEditModal = (n) => {
+    setEditingNotification(n);
+    setEditMessage(n.message || '');
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editMessage.trim()) {
+      addToast('Message cannot be empty', 'warning');
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await notificationService.updateNotification(editingNotification.id, editMessage.trim());
+      addToast('Notification updated', 'success');
+      setEditingNotification(null);
+      loadHistory();
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to update notification', 'error');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -134,16 +170,24 @@ export const NotificationsPage = () => {
                   <label className="form-label">
                     Target Audience *
                   </label>
-                  <select
-                    className="form-select"
-                    value={audience}
-                    onChange={(e) => setAudience(e.target.value)}
-                    required
-                  >
-                    <option value="STUDENTS">Students & Parents</option>
-                    <option value="TEACHERS">Teaching Faculty</option>
-                    <option value="BOTH">All Audiences (Both)</option>
-                  </select>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', padding: '0.5rem 0' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={targetStudents}
+                        onChange={(e) => setTargetStudents(e.target.checked)}
+                      />
+                      Students & Parents
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 500, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={targetTeachers}
+                        onChange={(e) => setTargetTeachers(e.target.checked)}
+                      />
+                      Teaching Faculty
+                    </label>
+                  </div>
                 </div>
 
                 {/* Broadcast Date */}
@@ -219,18 +263,19 @@ export const NotificationsPage = () => {
                 <th style={{ width: '160px' }}>Target Audience</th>
                 <th>Message Content</th>
                 <th style={{ width: '120px', textAlign: 'center' }}>Delivery Status</th>
+                <th style={{ width: '70px', textAlign: 'right' }}>Edit</th>
               </tr>
             </thead>
             <tbody>
               {loadingHistory ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
+                  <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2.5rem' }}>
                     Loading communications history...
                   </td>
                 </tr>
               ) : history.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
+                  <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem 1.5rem' }}>
                     <Bell size={32} style={{ opacity: 0.35, display: 'block', margin: '0 auto 0.5rem' }} />
                     <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
                       No notifications sent yet.
@@ -257,6 +302,16 @@ export const NotificationsPage = () => {
                         {n.status || 'DELIVERED'}
                       </span>
                     </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => openEditModal(n)}
+                        title="Edit message"
+                      >
+                        <Edit2 size={13} />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -264,6 +319,36 @@ export const NotificationsPage = () => {
           </table>
         </div>
       </div>
+
+      {/* Edit Notification Modal */}
+      <Modal
+        isOpen={!!editingNotification}
+        onClose={() => setEditingNotification(null)}
+        title="Edit Notification Message"
+        icon={Edit2}
+        footer={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setEditingNotification(null)}>Cancel</button>
+            <button type="submit" form="editNotificationForm" className="btn btn-primary" disabled={savingEdit}>
+              {savingEdit ? 'Saving...' : 'Save Changes'}
+            </button>
+          </>
+        }
+      >
+        <form id="editNotificationForm" onSubmit={handleSaveEdit}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Message</label>
+            <textarea
+              className="form-textarea"
+              rows={4}
+              value={editMessage}
+              onChange={(e) => setEditMessage(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
