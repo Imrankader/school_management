@@ -98,6 +98,10 @@ export const LeaveRequestsPage = () => {
     );
     const matchesDate = !filterDate || (r.leaveDate || r.startDate) === filterDate;
     return matchesSearch && matchesDate;
+  }).sort((a, b) => {
+    const nameA = studentsMap[a.studentId]?.name || `Student #${a.studentId}`;
+    const nameB = studentsMap[b.studentId]?.name || `Student #${b.studentId}`;
+    return nameA.localeCompare(nameB);
   });
 
   const filteredStaffLeaves = teacherLeaves.filter((r) => {
@@ -127,6 +131,15 @@ export const LeaveRequestsPage = () => {
     const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return sorted.slice(0, 50);
   }, [studentQuery, studentClassFilter, studentSectionFilter, allStudents]);
+
+  // Sections that actually exist for the selected class (or all sections, if no class chosen yet)
+  const availableSections = useMemo(() => {
+    const scoped = studentClassFilter
+      ? allStudents.filter((s) => s.className === studentClassFilter)
+      : allStudents;
+    const unique = [...new Set(scoped.map((s) => s.section).filter(Boolean))];
+    return unique.sort((a, b) => a.localeCompare(b));
+  }, [allStudents, studentClassFilter]);
 
   const selectedStudent = markForm.studentId ? studentsMap[markForm.studentId] : null;
 
@@ -494,21 +507,27 @@ export const LeaveRequestsPage = () => {
                         className="form-select"
                         style={{ flex: 1, fontSize: '0.825rem' }}
                         value={studentClassFilter}
-                        onChange={(e) => setStudentClassFilter(e.target.value)}
+                        onChange={(e) => {
+                          setStudentClassFilter(e.target.value);
+                          setStudentSectionFilter('');
+                        }}
                       >
                         <option value="">All Classes</option>
                         {CLASS_CONFIG.map((c) => (
                           <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
                         ))}
                       </select>
-                      <input
-                        type="text"
-                        className="form-input"
+                      <select
+                        className="form-select"
                         style={{ flex: 1, fontSize: '0.825rem' }}
-                        placeholder="Section"
                         value={studentSectionFilter}
                         onChange={(e) => setStudentSectionFilter(e.target.value)}
-                      />
+                      >
+                        <option value="">All Sections</option>
+                        {availableSections.map((sec) => (
+                          <option key={sec} value={sec}>{sec}</option>
+                        ))}
+                      </select>
                     </div>
                     <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
                       {studentMatches.length === 0 ? (

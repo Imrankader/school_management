@@ -148,8 +148,9 @@ export const StaffAccountsPage = () => {
     return s.name?.toLowerCase().includes(q) || s.email?.toLowerCase().includes(q);
   });
 
-  const admins = filteredStaff.filter((s) => s.role === 'ADMIN');
-  const teachers = filteredStaff.filter((s) => s.role === 'TEACHER');
+  const sortedStaff = [...filteredStaff].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
+  );
 
   return (
     <div>
@@ -203,7 +204,7 @@ export const StaffAccountsPage = () => {
                 </td>
               </tr>
             ) : (
-              [...admins, ...teachers].map((s) => (
+              sortedStaff.map((s) => (
                 <tr key={s.id}>
                   <td style={{ fontWeight: 600 }}>{s.name}</td>
                   <td>
