@@ -70,4 +70,8 @@ public class Student {
 
     @Column(name = "password_hash")
     private String passwordHash;
+
+    /** Base64 data URI (e.g. "data:image/jpeg;base64,..."), resized/compressed client-side before upload. */
+    @Column(columnDefinition = "TEXT")
+    private String photo;
 }

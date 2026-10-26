@@ -43,5 +43,26 @@ export const academicService = {
   getMarksByStudent: async (studentId) => {
     const response = await api.get(`/api/academic/marks/student/${studentId}`);
     return response.data;
-  }
+  },
+
+  // Board Results
+  getBoardResults: async () => {
+    const response = await api.get('/api/academic/board-results');
+    return response.data;
+  },
+
+  createBoardResult: async (data) => {
+    const response = await api.post('/api/academic/board-results', data);
+    return response.data;
+  },
+
+  updateBoardResult: async (id, data) => {
+    const response = await api.put(`/api/academic/board-results/${id}`, data);
+    return response.data;
+  },
+
+  deleteBoardResult: async (id) => {
+    const response = await api.delete(`/api/academic/board-results/${id}`);
+    return response.data;
+  },
 };

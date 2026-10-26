@@ -1,0 +1,42 @@
+package com.school.academic.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class BoardResultDTO {
+
+    private Long id;
+
+    @NotNull(message = "Student is required")
+    private Long studentId;
+
+    private String admissionNumber;
+    private String studentName;
+
+    @NotBlank(message = "Board is required")
+    private String board;
+
+    @NotBlank(message = "Standard is required")
+    private String standard;
+
+    @NotBlank(message = "Academic year is required")
+    private String academicYear;
+
+    private List<SubjectMarkDTO> subjects;
+
+    private Double totalMarks;
+
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}

@@ -1,11 +1,15 @@
 package com.school.academic.service;
 
+import com.school.academic.dto.BoardResultDTO;
+import com.school.academic.dto.SubjectMarkDTO;
 import com.school.academic.entity.AcademicClass;
+import com.school.academic.entity.BoardResult;
 import com.school.academic.entity.Exam;
 import com.school.academic.entity.Homework;
 import com.school.academic.entity.Mark;
 import com.school.academic.entity.Subject;
 import com.school.academic.repository.AcademicClassRepository;
+import com.school.academic.repository.BoardResultRepository;
 import com.school.academic.repository.ExamRepository;
 import com.school.academic.repository.HomeworkRepository;
 import com.school.academic.repository.MarkRepository;
@@ -34,6 +38,7 @@ public class AcademicService {
     private final ExamRepository examRepository;
     private final MarkRepository markRepository;
     private final HomeworkRepository homeworkRepository;
+    private final BoardResultRepository boardResultRepository;
 
     // ---- AcademicClass ----
 
@@ -431,5 +436,81 @@ public class AcademicService {
             throw new ResourceNotFoundException("Homework", "id", id);
         }
         homeworkRepository.deleteById(id);
+    }
+
+    // ---- Board Results ----
+
+    public List<BoardResultDTO> getAllBoardResults() {
+        return boardResultRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::toBoardResultDTO)
+                .toList();
+    }
+
+    @Transactional
+    public BoardResultDTO createBoardResult(BoardResultDTO dto) {
+        BoardResult result = BoardResult.builder()
+                .studentId(dto.getStudentId())
+                .admissionNumber(dto.getAdmissionNumber())
+                .studentName(dto.getStudentName())
+                .board(dto.getBoard())
+                .standard(dto.getStandard())
+                .academicYear(dto.getAcademicYear())
+                .subjects(toSubjectEntities(dto.getSubjects()))
+                .totalMarks(sumMarks(dto.getSubjects()))
+                .build();
+        BoardResult saved = boardResultRepository.save(result);
+        return toBoardResultDTO(saved);
+    }
+
+    @Transactional
+    public BoardResultDTO updateBoardResult(Long id, BoardResultDTO dto) {
+        BoardResult existing = boardResultRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("BoardResult", "id", id));
+        existing.setBoard(dto.getBoard());
+        existing.setStandard(dto.getStandard());
+        existing.setAcademicYear(dto.getAcademicYear());
+        existing.getSubjects().clear();
+        existing.getSubjects().addAll(toSubjectEntities(dto.getSubjects()));
+        existing.setTotalMarks(sumMarks(dto.getSubjects()));
+        BoardResult saved = boardResultRepository.save(existing);
+        return toBoardResultDTO(saved);
+    }
+
+    public void deleteBoardResult(Long id) {
+        if (!boardResultRepository.existsById(id)) {
+            throw new ResourceNotFoundException("BoardResult", "id", id);
+        }
+        boardResultRepository.deleteById(id);
+    }
+
+    private Double sumMarks(List<SubjectMarkDTO> subjects) {
+        if (subjects == null) return 0.0;
+        return subjects.stream().mapToDouble(s -> s.getMarks() != null ? s.getMarks() : 0.0).sum();
+    }
+
+    private List<BoardResult.SubjectMark> toSubjectEntities(List<SubjectMarkDTO> subjects) {
+        if (subjects == null) return new java.util.ArrayList<>();
+        return subjects.stream()
+                .map(s -> BoardResult.SubjectMark.builder().subjectName(s.getSubjectName()).marks(s.getMarks()).build())
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    private BoardResultDTO toBoardResultDTO(BoardResult result) {
+        List<SubjectMarkDTO> subjects = result.getSubjects().stream()
+                .map(s -> SubjectMarkDTO.builder().subjectName(s.getSubjectName()).marks(s.getMarks()).build())
+                .toList();
+        return BoardResultDTO.builder()
+                .id(result.getId())
+                .studentId(result.getStudentId())
+                .admissionNumber(result.getAdmissionNumber())
+                .studentName(result.getStudentName())
+                .board(result.getBoard())
+                .standard(result.getStandard())
+                .academicYear(result.getAcademicYear())
+                .subjects(subjects)
+                .totalMarks(result.getTotalMarks())
+                .createdAt(result.getCreatedAt())
+                .updatedAt(result.getUpdatedAt())
+                .build();
     }
 }

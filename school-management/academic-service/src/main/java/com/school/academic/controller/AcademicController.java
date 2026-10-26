@@ -1,5 +1,6 @@
 package com.school.academic.controller;
 
+import com.school.academic.dto.BoardResultDTO;
 import com.school.academic.dto.BulkUploadResult;
 import com.school.academic.dto.MarkBatchRequest;
 import com.school.academic.dto.MarkDTO;
@@ -318,6 +319,42 @@ public class AcademicController {
         verifyStaffRole(authHeader);
         academicService.deleteHomework(id);
         return ResponseEntity.ok(ApiResponse.success("Homework deleted", null));
+    }
+
+    // ---- Board Results ----
+
+    @GetMapping("/board-results")
+    public ResponseEntity<ApiResponse<List<BoardResultDTO>>> getAllBoardResults(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyStaffRole(authHeader);
+        return ResponseEntity.ok(ApiResponse.success(academicService.getAllBoardResults()));
+    }
+
+    @PostMapping("/board-results")
+    public ResponseEntity<ApiResponse<BoardResultDTO>> createBoardResult(
+            @jakarta.validation.Valid @RequestBody BoardResultDTO dto,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyStaffRole(authHeader);
+        BoardResultDTO created = academicService.createBoardResult(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Board result saved", created));
+    }
+
+    @PutMapping("/board-results/{id}")
+    public ResponseEntity<ApiResponse<BoardResultDTO>> updateBoardResult(
+            @PathVariable("id") Long id,
+            @jakarta.validation.Valid @RequestBody BoardResultDTO dto,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyStaffRole(authHeader);
+        return ResponseEntity.ok(ApiResponse.success("Board result updated", academicService.updateBoardResult(id, dto)));
+    }
+
+    @DeleteMapping("/board-results/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteBoardResult(
+            @PathVariable("id") Long id,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        verifyAdminRole(authHeader);
+        academicService.deleteBoardResult(id);
+        return ResponseEntity.ok(ApiResponse.success("Board result deleted", null));
     }
 
     // ---- Role verification helpers ----

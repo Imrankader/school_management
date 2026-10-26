@@ -225,6 +225,9 @@ public class StudentService {
         existing.setJoiningDate(dto.getJoiningDate());
         existing.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : existing.getIsActive());
         existing.setPhoneNumber(dto.getPhoneNumber());
+        if (dto.getPhoto() != null) {
+            existing.setPhoto(dto.getPhoto());
+        }
         if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
             existing.setPasswordHash(passwordEncoder.encode(dto.getPassword()));
         }
@@ -352,6 +355,7 @@ public class StudentService {
                 .joiningDate(student.getJoiningDate())
                 .isActive(student.getIsActive())
                 .phoneNumber(student.getPhoneNumber())
+                .photo(student.getPhoto())
                 .hasParentLogin(student.getPasswordHash() != null && !student.getPasswordHash().isBlank())
                 .build();
     }
@@ -385,6 +389,7 @@ public class StudentService {
                 .joiningDate(dto.getJoiningDate())
                 .isActive(dto.getIsActive() != null ? dto.getIsActive() : true)
                 .phoneNumber(dto.getPhoneNumber())
+                .photo(dto.getPhoto())
                 .passwordHash(dto.getPassword() != null && !dto.getPassword().isBlank() ? passwordEncoder.encode(dto.getPassword()) : null)
                 .build();
     }

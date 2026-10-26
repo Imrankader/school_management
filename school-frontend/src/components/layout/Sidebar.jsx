@@ -14,6 +14,8 @@ import {
   BookMarked,
   KeyRound,
   ShieldCheck,
+  GraduationCap,
+  IdCard,
   X
 } from 'lucide-react';
 
@@ -131,6 +133,22 @@ export const Sidebar = ({ isOpen, onClose }) => {
             >
               <ShieldCheck size={18} />
               <span>Module Access</span>
+            </NavLink>
+            <NavLink
+              to="/admin/board-results"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <GraduationCap size={18} />
+              <span>Board Results</span>
+            </NavLink>
+            <NavLink
+              to="/admin/id-cards"
+              onClick={handleLinkClick}
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              <IdCard size={18} />
+              <span>ID Cards</span>
             </NavLink>
           </>
         )}

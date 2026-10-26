@@ -57,6 +57,8 @@ public class StudentDTO {
 
     private String phoneNumber;
 
+    private String photo;
+
     // Write-only password, not returned to frontend
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private String password;

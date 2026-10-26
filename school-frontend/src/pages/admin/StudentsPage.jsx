@@ -90,7 +90,8 @@ export const StudentsPage = () => {
     bloodGroup: '',
     joiningDate: '',
     phoneNumber: '',
-    password: ''
+    password: '',
+    photo: ''
   });
 
   const [manualBloodGroup, setManualBloodGroup] = useState(false);
@@ -426,6 +427,38 @@ export const StudentsPage = () => {
       .sort(compareAcademicClasses);
   }, [classSummaries]);
 
+  // Resizes/compresses a picked photo to a small JPEG data URI before it goes in formData,
+  // so the student record (and every list that returns it) stays lightweight.
+  const handlePhotoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast('Please select an image file', 'warning');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 400;
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        } else if (height > maxDim) {
+          width = Math.round(width * (maxDim / height)); height = maxDim;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        setFormData((prev) => ({ ...prev, photo: canvas.toDataURL('image/jpeg', 0.75) }));
+      };
+      img.onerror = () => addToast('Could not read that image', 'error');
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Open Add Student Modal (From Summary: class empty; From Class-Details: class locked/prefilled)
   const handleOpenAdd = (prefillClass = '') => {
     setEditingStudent(null);
@@ -448,7 +481,8 @@ export const StudentsPage = () => {
       bloodGroup: '',
       joiningDate: '',
       phoneNumber: '',
-      password: ''
+      password: '',
+      photo: ''
     });
     setIsModalOpen(true);
   };
@@ -475,7 +509,8 @@ export const StudentsPage = () => {
       bloodGroup: student.bloodGroup || '',
       joiningDate: student.joiningDate || '',
       phoneNumber: student.phoneNumber || '',
-      password: ''
+      password: '',
+      photo: student.photo || ''
     });
     setIsModalOpen(true);
   };
@@ -560,7 +595,8 @@ export const StudentsPage = () => {
         isActive: true,
         phoneNumber: formData.phoneNumber ? formData.phoneNumber.trim() : '',
         password: formData.password ? formData.password.trim() : '',
-        parentId: null
+        parentId: null,
+        photo: formData.photo || undefined,
       };
 
       if (editingStudent) {
@@ -1904,6 +1940,29 @@ export const StudentsPage = () => {
           </h3>
 
           <div className="form-group">
+            <label className="form-label">Photo (optional)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {formData.photo ? (
+                <img
+                  src={formData.photo}
+                  alt="Student preview"
+                  style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                />
+              ) : (
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--bg-secondary, #f1f5f9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                  No photo
+                </div>
+              )}
+              <input type="file" accept="image/*" className="form-input" onChange={handlePhotoSelect} style={{ flex: 1 }} />
+              {formData.photo && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setFormData({ ...formData, photo: '' })}>
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="form-group">
             <label className="form-label">Address</label>
             <textarea
               className="form-input"
@@ -2107,23 +2166,31 @@ export const StudentsPage = () => {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-subtle)' }}>
-              <div
-                style={{
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'var(--primary-light)',
-                  color: 'var(--primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.2rem',
-                  fontWeight: 700,
-                  border: '1px solid var(--primary-border)',
-                }}
-              >
-                {(viewingStudent.name?.[0] || 'S').toUpperCase()}
-              </div>
+              {viewingStudent.photo ? (
+                <img
+                  src={viewingStudent.photo}
+                  alt={viewingStudent.name}
+                  style={{ width: '46px', height: '46px', borderRadius: 'var(--radius-md)', objectFit: 'cover', border: '1px solid var(--primary-border)' }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--primary-light)',
+                    color: 'var(--primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.2rem',
+                    fontWeight: 700,
+                    border: '1px solid var(--primary-border)',
+                  }}
+                >
+                  {(viewingStudent.name?.[0] || 'S').toUpperCase()}
+                </div>
+              )}
               <div style={{ flex: 1 }}>
                 <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700 }}>{viewingStudent.name}</h4>
                 <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
