@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -24,7 +24,18 @@ import {
   Cake,
   GraduationCap,
   Trash2,
+  LayoutGrid,
+  ChevronDown,
 } from 'lucide-react';
+
+const QUICK_ACTIONS = [
+  { to: '/admin/students', label: 'Add Student', icon: Users, color: 'var(--primary)' },
+  { to: '/admin/marks', label: 'Enter Marks', icon: Award, color: 'var(--primary)' },
+  { to: '/admin/fees', label: 'Create Billing', icon: DollarSign, color: 'var(--success)' },
+  { to: '/admin/homework', label: 'Create Homework', icon: ClipboardList, color: 'var(--primary)' },
+  { to: '/admin/leave', label: 'Manage Leave', icon: FileText, color: 'var(--warning)' },
+  { to: '/admin/import-export', label: 'Import Data', icon: FileSpreadsheet, color: 'var(--primary)' },
+];
 
 // Days until this person's next birthday (0 = today), or null if no DOB on record.
 const daysUntilNextBirthday = (dobStr) => {
@@ -50,10 +61,23 @@ export const AdminDashboard = () => {
   const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [clearingData, setClearingData] = useState(false);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const quickActionsRef = useRef(null);
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useEffect(() => {
+    if (!quickActionsOpen) return;
+    const handleClickOutside = (e) => {
+      if (quickActionsRef.current && !quickActionsRef.current.contains(e.target)) {
+        setQuickActionsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [quickActionsOpen]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -250,200 +274,62 @@ export const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* Quick Actions Bar */}
-      <div style={{ marginBottom: '1.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem' }}>
-          <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Quick Actions
-          </h2>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '0.75rem',
-          }}
+      {/* Quick Actions Menu */}
+      <div style={{ marginBottom: '1.75rem', position: 'relative' }} ref={quickActionsRef}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => setQuickActionsOpen((v) => !v)}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
         >
-          <Link
-            to="/admin/students"
-            style={{ textDecoration: 'none' }}
-          >
-            <div
-              className="card"
-              style={{
-                padding: '0.85rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <Users size={16} color="var(--primary)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Add Student
-              </span>
-            </div>
-          </Link>
+          <LayoutGrid size={16} />
+          <span>Quick Actions</span>
+          <ChevronDown size={14} style={{ transform: quickActionsOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </button>
 
-          <Link
-            to="/admin/marks"
-            style={{ textDecoration: 'none' }}
+        {quickActionsOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 0.5rem)',
+              left: 0,
+              zIndex: 20,
+              minWidth: '220px',
+              background: '#ffffff',
+              border: '1px solid var(--border-subtle, #e2e8f0)',
+              borderRadius: 'var(--radius-md, 6px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              overflow: 'hidden',
+            }}
           >
-            <div
-              className="card"
-              style={{
-                padding: '0.85rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <Award size={16} color="var(--primary)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Enter Marks
-              </span>
-            </div>
-          </Link>
-
-          <Link
-            to="/admin/fees"
-            style={{ textDecoration: 'none' }}
-          >
-            <div
-              className="card"
-              style={{
-                padding: '0.85rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--success)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <DollarSign size={16} color="var(--success)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Create Billing
-              </span>
-            </div>
-          </Link>
-
-          <Link
-            to="/admin/homework"
-            style={{ textDecoration: 'none' }}
-          >
-            <div
-              className="card"
-              style={{
-                padding: '0.85rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <ClipboardList size={16} color="var(--primary)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Create Homework
-              </span>
-            </div>
-          </Link>
-
-          <Link
-            to="/admin/leave"
-            style={{ textDecoration: 'none' }}
-          >
-            <div
-              className="card"
-              style={{
-                padding: '0.85rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--warning)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <FileText size={16} color="var(--warning)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Manage Leave
-              </span>
-            </div>
-          </Link>
-
-          <Link
-            to="/admin/import-export"
-            style={{ textDecoration: 'none' }}
-          >
-            <div
-              className="card"
-              style={{
-                padding: '0.85rem 1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                cursor: 'pointer',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <FileSpreadsheet size={16} color="var(--primary)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                Import Data
-              </span>
-            </div>
-          </Link>
-        </div>
+            {QUICK_ACTIONS.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.to}
+                  to={action.to}
+                  onClick={() => setQuickActionsOpen(false)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                    padding: '0.7rem 1rem',
+                    textDecoration: 'none',
+                    color: 'var(--text-main)',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    transition: 'var(--transition)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-main, #f8fafc)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <Icon size={16} color={action.color} />
+                  {action.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Main Grid: Upcoming / Important */}

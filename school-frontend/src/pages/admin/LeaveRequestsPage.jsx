@@ -3,7 +3,7 @@ import { leaveService } from '../../services/leaveService';
 import { studentService } from '../../services/studentService';
 import { useToast } from '../../context/ToastContext';
 import { Breadcrumb } from '../../components/common/Breadcrumb';
-import { toDisplayClassName } from '../../utils/academicClassOrder';
+import { toDisplayClassName, CLASS_CONFIG } from '../../utils/academicClassOrder';
 import { CalendarCheck2, FileText, Search, RefreshCw, User, Plus, X, Users, GraduationCap } from 'lucide-react';
 
 const SESSION_OPTIONS = [
@@ -34,6 +34,8 @@ export const LeaveRequestsPage = () => {
 
   const [showMarkModal, setShowMarkModal] = useState(false);
   const [studentQuery, setStudentQuery] = useState('');
+  const [studentClassFilter, setStudentClassFilter] = useState('');
+  const [studentSectionFilter, setStudentSectionFilter] = useState('');
   const [markForm, setMarkForm] = useState({ studentId: '', leaveDate: '', session: '', selectedReasonId: '', customReason: '' });
   const [submitting, setSubmitting] = useState(false);
   const [filterDate, setFilterDate] = useState('');
@@ -112,15 +114,19 @@ export const LeaveRequestsPage = () => {
 
   const studentMatches = useMemo(() => {
     const term = studentQuery.trim().toLowerCase();
-    const list = term
-      ? allStudents.filter((s) =>
-          (s.name || '').toLowerCase().includes(term) ||
-          (s.admissionNumber || '').toLowerCase().includes(term) ||
-          (s.className || '').toLowerCase().includes(term))
-      : allStudents;
+    const section = studentSectionFilter.trim().toLowerCase();
+    const list = allStudents.filter((s) => {
+      const textMatch = !term ||
+        (s.name || '').toLowerCase().includes(term) ||
+        (s.admissionNumber || '').toLowerCase().includes(term) ||
+        (s.className || '').toLowerCase().includes(term);
+      const classMatch = !studentClassFilter || s.className === studentClassFilter;
+      const sectionMatch = !section || (s.section || '').toLowerCase() === section;
+      return textMatch && classMatch && sectionMatch;
+    });
     const sorted = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     return sorted.slice(0, 50);
-  }, [studentQuery, allStudents]);
+  }, [studentQuery, studentClassFilter, studentSectionFilter, allStudents]);
 
   const selectedStudent = markForm.studentId ? studentsMap[markForm.studentId] : null;
 
@@ -136,6 +142,8 @@ export const LeaveRequestsPage = () => {
   const openMarkModal = () => {
     setMarkForm({ studentId: '', leaveDate: '', session: '', selectedReasonId: '', customReason: '' });
     setStudentQuery('');
+    setStudentClassFilter('');
+    setStudentSectionFilter('');
     setShowMarkModal(true);
   };
 
@@ -479,6 +487,27 @@ export const LeaveRequestsPage = () => {
                         value={studentQuery}
                         onChange={(e) => setStudentQuery(e.target.value)}
                         autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <select
+                        className="form-select"
+                        style={{ flex: 1, fontSize: '0.825rem' }}
+                        value={studentClassFilter}
+                        onChange={(e) => setStudentClassFilter(e.target.value)}
+                      >
+                        <option value="">All Classes</option>
+                        {CLASS_CONFIG.map((c) => (
+                          <option key={c.internalValue} value={c.internalValue}>{c.displayLabel}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ flex: 1, fontSize: '0.825rem' }}
+                        placeholder="Section"
+                        value={studentSectionFilter}
+                        onChange={(e) => setStudentSectionFilter(e.target.value)}
                       />
                     </div>
                     <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>

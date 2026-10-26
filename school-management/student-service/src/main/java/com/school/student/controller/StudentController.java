@@ -78,7 +78,7 @@ public class StudentController {
         ResponseEntity<ApiResponse<java.util.Map<String, Object>>> denied = denyUnlessRoleOrInternal(authHeader, "ADMIN", "TEACHER");
         if (denied != null) return denied;
 
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, pageSize, org.springframework.data.domain.Sort.by("id").descending());
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page - 1, pageSize, org.springframework.data.domain.Sort.by("name").ascending());
         org.springframework.data.domain.Page<StudentDTO> studentPage = studentService.searchStudents(search, className, status, pageable);
 
         java.util.Map<String, Object> responseData = new java.util.HashMap<>();
